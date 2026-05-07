@@ -1,0 +1,1469 @@
+/* ========================================================================
+   Co-Thinker — visual system
+   ------------------------------------------------------------------------
+   Design rules (each is a hard rule, not a guideline):
+
+   1. ONE signal per visual channel.
+      - color temperature (warm↔cool axis)  ← certainty × resonance
+      - texture (grain + edge softness)     ← clarity (judge AI)
+      - per-voice presence (stroke / opacity / weight) ← per-voice confidence
+      Channels never trade. Per-voice signal NEVER uses hue.
+
+   2. Color is restrained: 5-tier ink palette + one accent hue family,
+      hue range capped at ~6° across all states. The page should read
+      as one paper getting slightly damp / slightly warmed, never as a
+      different palette.
+
+   3. Motion budget:
+        12–20 s : ambient atmosphere drift (always, low amplitude)
+        4–6 s   : state-change transitions (sense / clarity)
+        3–4 s   : breathing pulses (presence / streaming)
+        ≤ 600ms : interaction feedback (hover, focus)
+      No two long animations at the same period — they're intentionally
+      desynced so the page never repeats.
+   ======================================================================== */
+
+
+/* ---- ink palette: 5 luminances, no second hue ----------------------- */
+:root {
+  --ink-strong:  #2a2018;
+  --ink:         #4d4439;
+  --ink-soft:    #8a8275;
+  --ink-faint:   #b8b1a4;
+  --ink-ghost:   #d6d0c4;
+  --line:        rgba(42, 32, 24, 0.07);
+  --line-strong: rgba(42, 32, 24, 0.14);
+
+  --type-family: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --type-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Consolas, monospace;
+  --type-serif: 'Lora', 'Microsoft YaHei', '微软雅黑', 'PingFang SC',
+    'Noto Sans SC', Georgia, serif;
+  --radius: 4px;
+  --easing: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---- felt-sense channels (driven from JS) --------------------------- */
+@property --sense-base {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(238, 232, 223);
+}
+@property --sense-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(190, 165, 155);
+}
+@property --sense-engagement {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --sense-grain {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.18;
+}
+@property --sense-edge {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.5;
+}
+@property --sense-haze {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0.6px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root {
+  width: 100%; height: 100%; margin: 0; padding: 0;
+  /* The page itself never scrolls — only .main-axis does. Without this
+     the grid can blow past 100vh once the message list is long. */
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--sense-base);
+  color: var(--ink);
+  font-family: var(--type-family);
+  font-size: 16px;
+  line-height: 1.65;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Long, gentle interpolations — the page never snaps. */
+  transition:
+    --sense-base 6s var(--easing),
+    --sense-accent 6s var(--easing),
+    --sense-engagement 6s var(--easing),
+    --sense-grain 5s var(--easing),
+    --sense-edge 5s var(--easing),
+    --sense-haze 5s var(--easing);
+}
+
+
+/* ---- atmosphere : two large soft accent gradients drifting ---------- *
+ * Edge softness and haze blur are driven by --sense-edge / --sense-haze
+ * (clarity channel). Color is driven by --sense-accent (color-temp channel).
+ * Drift period is 18 s — not synced to anything else.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      ellipse calc(46% + 18% * (1 - var(--sense-edge)))
+              calc(48% + 14% * (1 - var(--sense-edge)))
+              at 24% 30%,
+      var(--sense-accent) 0%, transparent
+        calc(50% + 12% * (1 - var(--sense-edge)))
+    ),
+    radial-gradient(
+      ellipse calc(44% + 20% * (1 - var(--sense-edge)))
+              calc(50% + 16% * (1 - var(--sense-edge)))
+              at 78% 72%,
+      var(--sense-accent) 0%, transparent
+        calc(52% + 10% * (1 - var(--sense-edge)))
+    );
+  mix-blend-mode: multiply;
+  opacity: calc(0.18 + 0.22 * var(--sense-engagement));
+  filter: blur(var(--sense-haze));
+  animation: drift 18s ease-in-out infinite alternate;
+  transition: opacity 5s var(--easing), filter 5s var(--easing);
+}
+
+@keyframes drift {
+  0%   { transform: translate3d(-1.4%, -0.8%, 0) scale(1.00); }
+  50%  { transform: translate3d( 1.2%,  1.1%, 0) scale(1.02); }
+  100% { transform: translate3d( 1.6%, -0.4%, 0) scale(1.01); }
+}
+
+/* ---- grain layer : achromatic noise, opacity = --sense-grain -------- *
+ * Pure black-and-white SVG noise blended into the paper so it reads as
+ * paper texture, never as colored noise. Density is opacity, not hue.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.32 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.65'/></svg>");
+  background-size: 220px 220px;
+  opacity: var(--sense-grain);
+  mix-blend-mode: multiply;
+}
+
+
+/* ============= stage / layout ===================================== */
+/* ============= app shell: sidebar + main column =================== */
+.app-shell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  height: 100%;
+  width: 100%;
+  transition: grid-template-columns 320ms var(--easing);
+}
+.app-shell.is-sidebar-collapsed {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  /* Single column, but make it explicit so we can pin its min-width. */
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  /* Hard cap so a long message list never grows the page itself. */
+  overflow: hidden;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  /* Top padding clears the fixed topbar-actions row; horizontal padding
+     keeps the reading column off the edges. */
+  padding: 56px clamp(20px, 5vw, 56px) 0;
+}
+/* Explicit grid-row pinning. WITHOUT these, when FoundationBar returns
+   null (no DOM node), auto-placement compresses items: main collapses
+   into row 2 (auto, sized to content) instead of row 3 (1fr), so
+   .main-axis is only ~200px tall regardless of any internal centering.
+   This was the actual root of every "still not centered" failure. */
+.stage > .topbar       { grid-row: 1; }
+.stage > .foundation   { grid-row: 2; }
+.stage > .main-axis    { grid-row: 3; }
+.stage > .composer     { grid-row: 4; }
+
+
+/* ============= topbar ============================================== */
+/* The .topbar element itself collapses to zero height — its children
+   (brand + actions) escape the .stage 760px reading-column via
+   position:fixed, anchoring to the actual viewport corners.
+   .stage gets padding-top to keep scrolling content from sliding
+   underneath the fixed brand area. */
+.topbar {
+  display: block;
+  height: 0;
+  padding: 0;
+}
+/* Brand block — used inside the sidebar header. Static layout; the
+   sidebar itself anchors the top-left position. */
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand-name {
+  font-family: var(--type-serif);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-strong);
+  line-height: 1.2;
+}
+.brand-sub {
+  font-family: var(--type-serif);
+  font-size: 12.5px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-soft);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+.topbar-actions {
+  position: fixed;
+  top: 28px;
+  right: clamp(20px, 3.5vw, 40px);
+  z-index: 10;
+  display: flex;
+  gap: 22px;
+  align-items: baseline;
+}
+
+/* Topbar buttons read as editorial marginalia — Lora italic, no chrome,
+   subtle ink-pen underline on hover. The default ghost-btn (used inside
+   modals) keeps its bordered style; only topbar context strips chrome. */
+.topbar-actions .ghost-btn,
+.foundation-trigger {
+  font-family: var(--type-serif);
+  font-size: 13.5px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  padding: 2px 4px 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  transition: color 320ms var(--easing);
+  position: relative;
+}
+.topbar-actions .ghost-btn::after,
+.foundation-trigger::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0;
+  transform: scaleX(0.5);
+  transform-origin: center;
+  transition:
+    opacity 320ms var(--easing),
+    transform 320ms var(--easing);
+}
+.topbar-actions .ghost-btn:hover:not(:disabled),
+.foundation-trigger:hover {
+  color: var(--ink-strong);
+}
+.topbar-actions .ghost-btn:hover:not(:disabled)::after,
+.foundation-trigger:hover::after {
+  opacity: 0.42;
+  transform: scaleX(1);
+}
+.topbar-actions .ghost-btn:disabled {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+.foundation-trigger-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0.5;
+  /* baseline alignment in italic serif — nudge to ride center of x-height */
+  align-self: center;
+  position: relative;
+  top: -1px;
+  flex-shrink: 0;
+  animation: pulse-breathe 3.6s ease-in-out infinite;
+  transition: background 280ms var(--easing);
+}
+.foundation-trigger.is-streaming .foundation-trigger-dot {
+  background: var(--ink-strong);
+  animation-duration: 1.4s;
+  opacity: 1;
+}
+.foundation-trigger.is-flash .foundation-trigger-dot {
+  animation:
+    trigger-flash 1.6s var(--easing) 1,
+    pulse-breathe 3.6s ease-in-out 1.6s infinite;
+  opacity: 1;
+}
+@keyframes trigger-flash {
+  0%   { background: var(--ink-soft); transform: scale(1); }
+  20%  { background: var(--ink-strong); transform: scale(1.5); }
+  100% { background: var(--ink-soft); transform: scale(1); }
+}
+
+
+/* ============= sidebar : journal index ============================= *
+ * The sidebar reads as the table of contents of a journal — same paper,
+ * slightly more soaked at the spine, with no hard rule separating it
+ * from the writing area. Hierarchy: brand (largest, serif) → marginalia
+ * "新建对话" (italic ink) → entries (sans, restrained). Every transition
+ * uses the long ease so nothing snaps. Current entry is marked the same
+ * way assistant voices are marked: a thin left ink stroke. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Spine-soaked paper — a horizontal gradient that fades into the main
+     column. Mirrors how an open journal's binding edge is darker. */
+  background: linear-gradient(
+    90deg,
+    rgba(42, 32, 24, 0.055) 0%,
+    rgba(42, 32, 24, 0.028) 60%,
+    rgba(42, 32, 24, 0.012) 100%
+  );
+  position: relative;
+  overflow: hidden;
+  z-index: 5;
+}
+/* Soft ink-wash on the trailing edge — fades in from the top and out
+   at the bottom, never reads as a hard rule. */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(42, 32, 24, 0.10) 14%,
+    rgba(42, 32, 24, 0.10) 86%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+.sidebar.is-collapsed {
+  align-items: center;
+  padding: 22px 0;
+}
+
+.sidebar-head {
+  padding: 26px 22px 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Toggle: a typographic chevron, no chrome. Slides on hover so the
+   action reads as direction, not as a button press. */
+.sidebar-toggle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--type-serif);
+  font-size: 18px;
+  line-height: 1;
+  font-style: italic;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    color 380ms var(--easing),
+    transform 380ms var(--easing);
+}
+.sidebar-toggle:hover {
+  color: var(--ink-strong);
+  transform: translateX(-2px);
+}
+.sidebar.is-collapsed .sidebar-toggle:hover {
+  transform: translateX(2px);
+}
+
+/* "新建对话" — editorial marginalia, mirrors the topbar 生成简报 button.
+   Lora italic, no chrome, ink-pen underline on hover. */
+.sidebar-new {
+  align-self: flex-start;
+  margin: 0 22px 18px;
+  padding: 4px 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--type-serif);
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  position: relative;
+  transition: color 380ms var(--easing);
+}
+.sidebar-new::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: currentColor;
+  opacity: 0;
+  transform: scaleX(0.4);
+  transform-origin: left;
+  transition:
+    opacity 380ms var(--easing),
+    transform 380ms var(--easing);
+}
+.sidebar-new:hover {
+  color: var(--ink-strong);
+}
+.sidebar-new:hover::after {
+  opacity: 0.45;
+  transform: scaleX(1);
+}
+.sidebar-new-plus {
+  font-family: var(--type-serif);
+  font-size: 16px;
+  line-height: 1;
+  font-style: normal;
+  opacity: 0.55;
+  position: relative;
+  top: -1px;
+  transition: opacity 380ms var(--easing);
+}
+.sidebar-new:hover .sidebar-new-plus {
+  opacity: 1;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 14px 28px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sidebar-list::-webkit-scrollbar { width: 4px; }
+.sidebar-list::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+.sidebar-list::-webkit-scrollbar-track { background: transparent; }
+
+.sidebar-empty {
+  font-family: var(--type-serif);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-faint);
+  padding: 10px 8px 0;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+/* Each entry is a journal line. The current entry is marked the same
+   way an assistant voice is marked: a thin left ink stroke. Hover
+   raises the ink slightly without box-like chrome. Items fade in
+   when first painted. */
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 1px solid transparent;
+  border-radius: 0;
+  transition:
+    border-left-color 540ms var(--easing),
+    background 480ms var(--easing);
+  animation: sidebar-item-in 540ms var(--easing) both;
+}
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.sidebar-item.is-current {
+  border-left-color: var(--ink-strong);
+  background: rgba(255, 255, 255, 0.42);
+}
+@keyframes sidebar-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sidebar-item-main {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 8px 6px;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+  transition:
+    color 380ms var(--easing),
+    font-weight 380ms var(--easing);
+}
+.sidebar-item:hover .sidebar-item-main {
+  color: var(--ink);
+}
+.sidebar-item.is-current .sidebar-item-main {
+  color: var(--ink-strong);
+  font-weight: 460;
+}
+
+/* The × emerges on hover/current — never a hard appear, only a fade. */
+.sidebar-item-del {
+  flex-shrink: 0;
+  margin-right: 4px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--type-serif);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0;
+  transition:
+    color 280ms var(--easing),
+    opacity 380ms var(--easing);
+}
+.sidebar-item:hover .sidebar-item-del,
+.sidebar-item.is-current .sidebar-item-del,
+.sidebar-item.is-confirm .sidebar-item-del {
+  opacity: 1;
+}
+.sidebar-item-del:hover {
+  color: var(--ink-strong);
+}
+.sidebar-item.is-confirm .sidebar-item-del {
+  color: var(--ink-strong);
+  font-family: var(--type-serif);
+  font-size: 11.5px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  opacity: 1;
+}
+
+
+.ghost-btn,
+.primary-btn {
+  font: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    color 280ms var(--easing),
+    background 280ms var(--easing),
+    border-color 280ms var(--easing);
+}
+.ghost-btn {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.ghost-btn:hover:not(:disabled) {
+  color: var(--ink-strong);
+  border-color: var(--line-strong);
+}
+.ghost-btn:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.primary-btn {
+  background: var(--ink-strong);
+  color: var(--sense-base);
+  border: 1px solid var(--ink-strong);
+}
+.primary-btn:hover:not(:disabled) { opacity: 0.9; }
+.primary-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+
+/* ============= foundation bar ===================================== */
+.foundation {
+  position: relative;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+  --foundation-haze: 0px;
+  --foundation-clarity: 0;
+}
+.foundation-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  transition: background 220ms var(--easing);
+}
+.foundation-bar:hover { background: rgba(42, 32, 24, 0.015); }
+.foundation.is-flash .foundation-bar {
+  animation: foundation-flash 1.6s var(--easing) 1;
+}
+/* A revise is a stronger event than an append — pulses twice and a
+   touch deeper, but still achromatic. */
+.foundation.is-flash.is-revise .foundation-bar {
+  animation: foundation-flash-revise 2.4s var(--easing) 1;
+}
+@keyframes foundation-flash {
+  0%   { background: transparent; }
+  20%  { background: rgba(42, 32, 24, 0.04); }
+  100% { background: transparent; }
+}
+@keyframes foundation-flash-revise {
+  0%   { background: transparent; }
+  15%  { background: rgba(42, 32, 24, 0.07); }
+  35%  { background: transparent; }
+  55%  { background: rgba(42, 32, 24, 0.05); }
+  100% { background: transparent; }
+}
+
+.foundation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.foundation-pulse {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0.45;
+  animation: pulse-breathe 3.6s ease-in-out infinite;
+}
+.foundation.is-streaming .foundation-pulse {
+  background: var(--ink-strong);
+  animation-duration: 1.4s;
+}
+@keyframes pulse-breathe {
+  0%, 100% { opacity: 0.18; transform: scale(0.96); }
+  50%      { opacity: 0.55; transform: scale(1.04); }
+}
+
+.foundation-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  filter: blur(var(--foundation-haze));
+  transition: filter 4s var(--easing);
+}
+.foundation-chevron {
+  font-size: 10px;
+  color: var(--ink-faint);
+  transition: transform 320ms var(--easing);
+}
+.foundation.is-open .foundation-chevron { transform: rotate(180deg); }
+
+.foundation-expanded {
+  padding: 6px 4px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: foundation-open 380ms var(--easing) 1;
+}
+@keyframes foundation-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.foundation-expanded-text {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ink-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* The prose self-narrative — primary reading surface in expanded mode.
+   Reads as a quiet paragraph, slightly larger than list items, with the
+   serif-ish weight that paragraphs want. */
+.foundation-narrative {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--ink-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 2px 2px 4px;
+}
+/* The list view collapses behind a small disclosure — present, but
+   secondary. The summary reads like a quiet hint rather than a CTA. */
+.foundation-structure {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+.foundation-structure-summary {
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  padding: 4px 0;
+  list-style: none;
+  outline: none;
+}
+.foundation-structure-summary::-webkit-details-marker { display: none; }
+.foundation-structure-summary::before {
+  content: '› ';
+  display: inline-block;
+  transition: transform 220ms var(--easing);
+  color: var(--ink-faint);
+}
+.foundation-structure[open] > .foundation-structure-summary::before {
+  transform: rotate(90deg);
+}
+.foundation-structure[open] > .foundation-list {
+  margin-top: 8px;
+}
+/* Numbered consensus list — visual structure, but rendered soft so it
+   reads as paragraph-flow with quiet markers, not a to-do checklist.
+   The numbers are dimmed and small; spacing carries the rhythm. */
+.foundation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: foundation-item;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.foundation-item {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--ink-strong);
+  position: relative;
+  padding-left: 22px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  counter-increment: foundation-item;
+}
+.foundation-item::before {
+  content: counter(foundation-item);
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.foundation-drift {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border-left: 1px solid var(--line-strong);
+  background: rgba(42, 32, 24, 0.025);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.foundation-drift-label {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.foundation-drift-text {
+  font-size: 13px;
+  color: var(--ink);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+.foundation-note {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.01em;
+}
+
+
+/* ============= main thread ======================================== */
+.main-axis {
+  /* min-height/min-width:0 is THE fix: grid + flex items default to
+     min-*: auto, which means they expand to fit content instead of
+     letting overflow-y/text-wrap do their jobs. Without these, both
+     the page height AND a single long CJK line can blow out the layout. */
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 32px 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  scrollbar-width: none;
+  /* Positioning context for absolute-centered empty-prompt overlay. */
+  position: relative;
+}
+.main-axis::-webkit-scrollbar { width: 0; }
+
+/* Empty state — title page of an essay before it's written.
+   Prompt is presented as crystallized thinking, not as an input box hint.
+   - Centering: parent .main-axis adds `is-empty` class which sets
+     justify-content:center. (flex:1 on the child collided with overflow:auto
+     + grid 1fr in the parent chain — parent-driven centering is robust.)
+   - Headline shimmer: a bright band sweeps through the text via
+     linear-gradient + background-clip:text. Animation uses `alternate`
+     ease-in-out so it ping-pongs without a seam at cycle boundary.
+   - Depth via filter:drop-shadow double layer (white below = highlight,
+     soft dark = shadow). text-shadow doesn't work with background-clip:text;
+     drop-shadow does.
+   - Font: Lora for English (humanist serif, soft curves), KaiTi/STKaiti
+     for Chinese (calligraphic, more 圆润 + artistic than Songti).
+   - Subtitle fades in second, no shimmer (would compete with reading). */
+/* When empty, switch main-axis to an explicit 3-row grid template:
+   [1fr | auto | 1fr]. Geometrically the auto row sits exactly between
+   two equal flexible rows — centering is structural, not derived from
+   alignment heuristics that fight grid-1fr / overflow-auto / padding
+   sizing-pass quirks. (place-content:center, margin:auto, flex:1, and
+   position:absolute all failed in this layout chain.) */
+.main-axis.is-empty {
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+}
+.main-axis.is-empty .empty-prompt {
+  grid-row: 2;
+  justify-self: center;
+}
+.empty-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  padding: 0 16px;
+  margin: 0;
+  text-align: center;
+}
+.empty-headline {
+  font-family: var(--type-serif);
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 400;
+  letter-spacing: 0.012em;
+  line-height: 1.2;
+  /* Bright band sweeps through ink-tinted text. */
+  background: linear-gradient(
+    100deg,
+    rgba(42, 32, 24, 0.42) 32%,
+    rgba(42, 32, 24, 0.96) 50%,
+    rgba(42, 32, 24, 0.42) 68%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* Depth: thin bright lower edge + soft dark cushion. */
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.55))
+    drop-shadow(0 2px 10px rgba(42, 32, 24, 0.08));
+  opacity: 0;
+  transform: translateY(8px);
+  animation:
+    empty-headline-in 1.4s var(--easing) 0.3s forwards,
+    empty-headline-shimmer 7s ease-in-out 1.7s infinite alternate;
+}
+.empty-sub {
+  font-family: var(--type-serif);
+  font-size: 15px;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  opacity: 0;
+  filter: blur(2px);
+  animation: empty-sub-in 2s var(--easing) 1.2s forwards;
+}
+@keyframes empty-headline-in {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes empty-headline-shimmer {
+  /* alternate makes both endpoints natural rest points (inhale / exhale
+     extremes) — no seam at cycle restart since we ping-pong, not loop. */
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes empty-sub-in {
+  0%   { opacity: 0;    filter: blur(2px); }
+  100% { opacity: 0.74; filter: blur(0); }
+}
+
+
+/* ============= messages =========================================== */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Every message row is a flex column item — pin min-width:0 and
+   max-width:100% so a single long line can never exceed the column. */
+.msg {
+  min-width: 0;
+  max-width: 100%;
+  animation: msg-in 480ms var(--easing) both;
+}
+
+.msg-user {
+  align-self: flex-end;
+  max-width: min(72%, 100%);
+}
+/* User message mirrors the assistant voice: a thin ink stroke on the
+   speaker's side (right, here) with left-aligned text inside. Keeping
+   text left-aligned avoids the ragged-right that text-align:right
+   produces when CJK lines break at Latin word boundaries (python /
+   cpython etc.) — both lines now share a clean right edge at the
+   stroke. */
+.msg-user .msg-bubble {
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.65;
+  padding-right: 16px;
+  border-right: 1px solid var(--ink-soft);
+}
+
+.msg-system {
+  align-self: center;
+  max-width: min(70%, 100%);
+}
+.msg-system .msg-bubble {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  text-align: center;
+  font-style: italic;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.msg-assistant {
+  width: 100%;
+  min-width: 0;
+}
+.voices {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Per-voice presence — driven by --voice-stroke / --voice-opacity / --voice-weight
+   set inline by MessageView. NO HUE CHANGE.
+   The left border is the only "ornament" — its weight is the speaker's
+   confidence made visible. */
+.voice {
+  --voice-stroke: 1px;
+  --voice-opacity: 0.92;
+  --voice-weight: 420;
+  position: relative;
+  padding-left: 16px;
+  border-left: var(--voice-stroke) solid var(--ink-soft);
+  min-width: 0;
+  max-width: 100%;
+  transition:
+    border-left-width 600ms var(--easing),
+    opacity 600ms var(--easing);
+}
+.voice-text {
+  font-size: 15px;
+  line-height: 1.72;
+  color: var(--ink);
+  font-weight: var(--voice-weight);
+  opacity: var(--voice-opacity);
+  white-space: pre-wrap;
+  /* CJK with no spaces still needs an explicit hint to wrap mid-word
+     when a single token is wider than the container. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  transition:
+    font-weight 600ms var(--easing),
+    opacity 600ms var(--easing);
+}
+.voice-cursor {
+  display: inline-block;
+  width: 1px;
+  margin-left: 2px;
+  color: var(--ink-soft);
+  animation: cursor-fade 1.2s ease-in-out infinite;
+}
+@keyframes cursor-fade {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 0.8; }
+}
+
+
+/* ============= thinking pulse (streaming, no voices yet) =========== */
+.thinking-pulse {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0 4px 16px;
+  align-self: flex-start;
+}
+.thinking-pulse span {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0.25;
+  animation: pulse-breathe 2.4s ease-in-out infinite;
+}
+.thinking-pulse span:nth-child(2) { animation-delay: 0.5s; }
+.thinking-pulse span:nth-child(3) { animation-delay: 1.0s; }
+
+
+/* ============= composer =========================================== */
+/* Single paper card. Internal grid: textarea + seed stack on the left,
+   send button pinned to the right (spans both rows so it sits at the
+   bottom of the card regardless of textarea height).
+   Card has a translucent warm fill that deepens on focus, plus a faint
+   inset highlight to feel like pressed paper rather than a flat input. */
+.composer {
+  padding: 18px 0 26px;
+  min-width: 0;
+}
+.composer-stack {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 12px 14px 10px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "input  send"
+    "seed   send";
+  gap: 6px 12px;
+  align-items: end;
+  min-width: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition:
+    background 320ms var(--easing),
+    border-color 320ms var(--easing),
+    box-shadow 320ms var(--easing);
+}
+.composer-stack:focus-within {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: var(--ink-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 4px 18px -6px rgba(42, 32, 24, 0.08);
+}
+.composer-input {
+  grid-area: input;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  resize: none;
+  width: 100%;
+  /* JS sets height up to TEXTAREA_MAX_HEIGHT; beyond that, scroll. */
+  max-height: 180px;
+  overflow-y: auto;
+  caret-color: var(--ink-strong);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.composer-input::-webkit-scrollbar { width: 4px; }
+.composer-input::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+.composer-input::placeholder {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* Seed = ghost suggestion under the input. Faint, italic, click to adopt.
+   Never auto-fills — the user must explicitly accept it. */
+.composer-seed {
+  grid-area: seed;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 0 0 2px 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-ghost);
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  max-width: 100%;
+  min-width: 0;
+  animation: seed-in 700ms var(--easing) 240ms forwards;
+  transition: color 280ms var(--easing);
+}
+.composer-seed:hover { color: var(--ink-soft); }
+.composer-seed-mark {
+  color: var(--ink-faint);
+  flex-shrink: 0;
+}
+.composer-seed-text {
+  font-style: italic;
+  /* If the seed is long enough to need clipping, single-line ellipsize
+     instead of wrapping — the composer should stay one line tall. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+@keyframes seed-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.send-btn {
+  grid-area: send;
+  align-self: end;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  transition:
+    background 320ms var(--easing),
+    color 320ms var(--easing),
+    border-color 320ms var(--easing);
+}
+.send-btn:hover:not(:disabled) {
+  background: var(--ink-strong);
+  color: var(--sense-base);
+  border-color: var(--ink-strong);
+}
+.send-btn:disabled {
+  color: var(--ink-faint);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+/* The arrow inches forward on hover — direction without a button-press
+   feel. Keeping the translate on the inner SVG (not the button) so the
+   ink-fill background stays put. */
+.send-arrow {
+  transition: transform 380ms var(--easing);
+}
+.send-btn:hover:not(:disabled) .send-arrow {
+  transform: translateX(2px);
+}
+.send-btn:disabled .send-arrow {
+  opacity: 0.7;
+}
+
+/* Streaming state: three small ink dots breathing in sequence. Replaces
+   the arrow while a turn is in flight, no layout shift. */
+.send-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.send-dots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: send-dot-breathe 1.2s ease-in-out infinite;
+}
+.send-dots span:nth-child(2) { animation-delay: 0.2s; }
+.send-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes send-dot-breathe {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.2); }
+}
+
+
+/* ============= brief modal ======================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 14, 10, 0.32);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: backdrop-in 260ms var(--easing);
+}
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.brief-modal {
+  background: var(--sense-base);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  width: min(720px, 90vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px -20px rgba(20, 14, 10, 0.18);
+  animation: modal-in 360ms var(--easing);
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.brief-head {
+  padding: 22px 24px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+}
+.brief-title-group { display: flex; flex-direction: column; gap: 6px; }
+.brief-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink-strong);
+  letter-spacing: 0.04em;
+}
+.brief-subtitle {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+.brief-close {
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  transition: color 200ms var(--easing), background 200ms var(--easing);
+}
+.brief-close:hover { color: var(--ink-strong); background: rgba(42, 32, 24, 0.04); }
+
+.brief-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 24px;
+  scrollbar-width: thin;
+}
+.brief-body::-webkit-scrollbar { width: 6px; }
+.brief-body::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 3px;
+}
+
+.brief-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 56px 0;
+}
+.brief-loading-dots { display: flex; gap: 7px; }
+.brief-loading-dots span {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  animation: pulse-breathe 2.4s ease-in-out infinite;
+}
+.brief-loading-dots span:nth-child(2) { animation-delay: 0.5s; }
+.brief-loading-dots span:nth-child(3) { animation-delay: 1.0s; }
+.brief-loading-text {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.brief-error {
+  font-size: 13.5px;
+  color: var(--ink-strong);
+  background: rgba(180, 60, 50, 0.06);
+  border-left: 2px solid rgba(180, 60, 50, 0.4);
+  padding: 12px 14px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.brief-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.brief-section { display: flex; flex-direction: column; gap: 6px; }
+.brief-section-heading {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.brief-section-body {
+  font-size: 14.5px;
+  line-height: 1.72;
+  color: var(--ink-strong);
+  white-space: pre-wrap;
+}
+.brief-cursor {
+  color: var(--ink-soft);
+  animation: cursor-fade 1.2s ease-in-out infinite;
+}
+.brief-raw {
+  font-family: var(--type-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.brief-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--line);
+}
+.brief-foot-left { font-size: 12px; color: var(--ink-soft); }
+.brief-copy-status { animation: msg-in 220ms var(--easing); }
+.brief-foot-actions { display: flex; gap: 8px; }
+
+
+/* ============= foundation modal =================================== */
+/* Reuses .modal-backdrop and .brief-close from BriefModal styles.
+   Inner content (foundation-narrative / -list / -drift / -structure)
+   reuses existing styles from when it was a top bar. */
+.foundation-modal {
+  background: var(--sense-base);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  width: min(620px, 90vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px -20px rgba(20, 14, 10, 0.18);
+  animation: modal-in 360ms var(--easing);
+}
+.foundation-modal-head {
+  padding: 22px 24px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.foundation-modal-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.foundation-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink-strong);
+  letter-spacing: 0.04em;
+}
+.foundation-modal-subtitle {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+.foundation-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: thin;
+}
+.foundation-modal-body::-webkit-scrollbar { width: 6px; }
+.foundation-modal-body::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 3px;
+}
+.foundation-modal-empty {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  font-style: italic;
+  text-align: center;
+  padding: 32px 0;
+}

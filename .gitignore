@@ -1,0 +1,52 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+*-server.*.log
+backend-server.*.log
+frontend-server.*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.egg-info/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+.eslintcache
+
+# Local SQLite DBs
+*.sqlite
+*.sqlite3
+*.db
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Project local
+_archive/
+
+# Personal — never commit
+resume/
+.claude/
