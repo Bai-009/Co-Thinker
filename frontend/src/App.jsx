@@ -10,6 +10,7 @@ import useBrief from './hooks/useBrief'
 import useConversations from './hooks/useConversations'
 import useFoundationPoll from './hooks/useFoundationPoll'
 import useJudge from './hooks/useJudge'
+import useTheme from './hooks/useTheme'
 import useWorkshop from './hooks/useWorkshop'
 import { API, getJSON } from './lib/api'
 import { makeId, parseStoredVoices, stripProtocolBlocks } from './lib/messages'
@@ -22,6 +23,7 @@ export default function App() {
 
   const [foundation, setFoundation] = useState('')
   const [foundationNarrative, setFoundationNarrative] = useState('')
+  const [plan, setPlan] = useState('')
   const [foundationOpen, setFoundationOpen] = useState(false)
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -38,9 +40,11 @@ export default function App() {
   const judge = useJudge()
   const brief = useBrief()
   const conversations = useConversations()
+  const themeCtl = useTheme()
   const poll = useFoundationPoll({
     setFoundation,
     setFoundationNarrative,
+    setPlan,
     judgeHydrate: judge.hydrate,
   })
 
@@ -59,7 +63,7 @@ export default function App() {
     [conversations, poll],
   )
 
-  const { send, streaming } = useWorkshop({
+  const { send, edit, streaming } = useWorkshop({
     setMessages,
     onTurnDone: handleTurnDone,
   })
@@ -78,6 +82,7 @@ export default function App() {
       setMessages([])
       setFoundation('')
       setFoundationNarrative('')
+      setPlan('')
       setFoundationOpen(false)
       brief.reset()
       judge.clear()
@@ -89,6 +94,7 @@ export default function App() {
     setMessages([])
     setFoundation('')
     setFoundationNarrative('')
+    setPlan('')
     setFoundationOpen(false)
     brief.reset()
     poll.reset()
@@ -98,9 +104,9 @@ export default function App() {
         const msgs = (data.messages || [])
           .map((m) => {
             if (m.role === 'assistant') {
-              const { voices, confs } = parseStoredVoices(m.content)
+              const { voices, confs, interrupted } = parseStoredVoices(m.content)
               if (voices.length) {
-                return { id: makeId(), role: 'assistant', voices, confs }
+                return { id: makeId(), role: 'assistant', voices, confs, interrupted }
               }
               const stripped = stripProtocolBlocks(m.content)
               if (!stripped) return null
@@ -109,6 +115,7 @@ export default function App() {
                 role: 'assistant',
                 voices: [stripped],
                 confs: [0.5],
+                interrupted: [false],
               }
             }
             return { id: makeId(), role: m.role, content: m.content }
@@ -122,13 +129,16 @@ export default function App() {
       .then((data) => {
         const f = data.foundation || ''
         const n = data.foundation_narrative || ''
+        const p = data.plan || ''
         setFoundation(f)
         setFoundationNarrative(n)
-        poll.hydrate({ foundation: f, foundation_narrative: n })
+        setPlan(p)
+        poll.hydrate({ foundation: f, foundation_narrative: n, plan: p })
       })
       .catch(() => {
         setFoundation('')
         setFoundationNarrative('')
+        setPlan('')
       })
 
     getJSON(API.sense)
@@ -164,10 +174,26 @@ export default function App() {
 
   const handleSend = useCallback(async () => {
     const text = composerValue.trim()
-    if (!text || streaming) return
+    if (!text) return
+    // No `streaming` gate — useWorkshop.send() handles the mid-stream
+    // case by aborting the in-flight thinker and marking the partial
+    // assistant voice as interrupted. This is the front half of the
+    // 双向修改流: the human can追打 while AI is still浮现, and AI
+    // adaptively continues / refines / pivots from where it was.
     setComposerValue('')
     await send(text)
-  }, [composerValue, streaming, send])
+  }, [composerValue, send])
+
+  const handleEdit = useCallback(
+    async (newText) => {
+      if (!newText) return
+      // edit() handles abort + state truncation internally + POSTs to
+      // /api/chat/edit. Backend rolls foundation/sense/clarity back to
+      // the pre-turn snapshot, then re-runs thinker with the new content.
+      await edit(newText)
+    },
+    [edit],
+  )
 
   const handleNewConversation = useCallback(() => {
     if (streaming) return
@@ -217,6 +243,8 @@ export default function App() {
           onOpenFoundation={() => setFoundationOpen(true)}
           foundationActive={!!(foundation || foundationNarrative)}
           foundationFlash={poll.flash}
+          theme={themeCtl.theme}
+          onToggleTheme={themeCtl.toggle}
         />
 
         <main className={`main-axis${isEmpty ? ' is-empty' : ''}`}>
@@ -226,9 +254,26 @@ export default function App() {
               <div className="empty-sub">Prompt 不是输入技巧，而是共识后的思考结晶</div>
             </div>
           )}
-          {messages.map((msg) => (
-            <MessageView key={msg.id} msg={msg} />
-          ))}
+          {(() => {
+            // Find the index of the latest user message — only that one
+            // gets the edit affordance (per design 1(a): edit-most-recent
+            // only, no version branches).
+            let latestUserIdx = -1
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (messages[i].role === 'user') {
+                latestUserIdx = i
+                break
+              }
+            }
+            return messages.map((msg, i) => (
+              <MessageView
+                key={msg.id}
+                msg={msg}
+                canEdit={i === latestUserIdx}
+                onEdit={handleEdit}
+              />
+            ))
+          })()}
           {showThinkingPulse && (
             <div className="thinking-pulse" aria-hidden="true">
               <span></span>
@@ -263,6 +308,7 @@ export default function App() {
           open={foundationOpen}
           text={foundation}
           narrative={foundationNarrative}
+          plan={plan}
           drift={judge.drift}
           onClose={() => setFoundationOpen(false)}
         />

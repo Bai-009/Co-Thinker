@@ -46,6 +46,7 @@ async def get_foundation(session: Session = Depends(get_session)):
     return {
         "foundation": session.foundation,
         "foundation_narrative": session.foundation_narrative,
+        "plan": session.plan,
     }
 
 

@@ -13,17 +13,32 @@ def get_llm_settings() -> tuple[str, str, str]:
     return (
         os.getenv("DEEPSEEK_API_KEY", ""),
         os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        # Default to v4-flash (deepseek-chat alias deprecated 2026-07-24).
+        os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
     )
 
 
-async def chat_completion(messages: list[dict]) -> str:
+def get_reasoner_model() -> str:
+    """The deep-推理 model used by 元认知 endpoints (judge).
+
+    Co-Thinker's Harness split: thinker stays fast (前台 IM rhythm),
+    metabolize-side calls escalate to reasoning (judge does watching-
+    the-watcher and can afford the latency). v4-pro is DeepSeek's
+    reasoning-tier model — strictly stronger but seconds-to-minutes
+    response time. Override with DEEPSEEK_REASONER_MODEL if you want
+    to fall back to v4-flash or stay on the deprecated `deepseek-reasoner`.
+    """
+    return os.getenv("DEEPSEEK_REASONER_MODEL", "deepseek-v4-pro")
+
+
+async def chat_completion(messages: list[dict], model: str | None = None) -> str:
     """
     调用 DeepSeek Chat Completion API（非流式）。
     messages: OpenAI 格式的消息列表
+    model: 可选 model 覆盖；为 None 时使用 env 默认（DEEPSEEK_MODEL）。
     返回完整的 AI 回复文本。
     """
-    api_key, base_url, model = get_llm_settings()
+    api_key, base_url, default_model = get_llm_settings()
     if not api_key:
         raise RuntimeError("未配置 DEEPSEEK_API_KEY，请在 .env 文件中设置。")
 
@@ -33,7 +48,7 @@ async def chat_completion(messages: list[dict]) -> str:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": model,
+        "model": model or default_model,
         "messages": messages,
         "temperature": 0.8,
     }
@@ -45,12 +60,16 @@ async def chat_completion(messages: list[dict]) -> str:
         return data["choices"][0]["message"]["content"]
 
 
-async def chat_completion_stream(messages: list[dict]) -> AsyncIterator[str]:
+async def chat_completion_stream(
+    messages: list[dict],
+    model: str | None = None,
+) -> AsyncIterator[str]:
     """
     流式调用 DeepSeek Chat Completion API。
     每次 yield 一个 token / token chunk 的文本片段。
+    model: 可选 model 覆盖；为 None 时使用 env 默认（DEEPSEEK_MODEL）。
     """
-    api_key, base_url, model = get_llm_settings()
+    api_key, base_url, default_model = get_llm_settings()
     if not api_key:
         raise RuntimeError("未配置 DEEPSEEK_API_KEY，请在 .env 文件中设置。")
 
@@ -61,7 +80,7 @@ async def chat_completion_stream(messages: list[dict]) -> AsyncIterator[str]:
         "Accept": "text/event-stream",
     }
     payload = {
-        "model": model,
+        "model": model or default_model,
         "messages": messages,
         "temperature": 0.8,
         "stream": True,

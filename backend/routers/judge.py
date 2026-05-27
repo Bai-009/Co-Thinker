@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from deps import SESSION_HEADER, get_session
-from llm import chat_completion_stream
+from llm import chat_completion_stream, get_reasoner_model
 from sse import (
     StreamParser,
     parse_clamped_float,
@@ -45,6 +45,7 @@ _CONF_BLOCK_RE = re.compile(r"\[CONF\][\s\S]*?\[/CONF\]\s*")
 _FOUNDATION_BLOCK_RE = re.compile(r"\[FOUNDATION\][\s\S]*?\[/FOUNDATION\]")
 _NARRATIVE_BLOCK_RE = re.compile(r"\[FOUNDATION_NARRATIVE\][\s\S]*?\[/FOUNDATION_NARRATIVE\]")
 _SENSE_BLOCK_RE = re.compile(r"\[SENSE\][\s\S]*?\[/SENSE\]")
+_INTERRUPTED_RE = re.compile(r"\s*\[INTERRUPTED\]\s*")
 
 
 def _strip_markers(content: str) -> str:
@@ -54,6 +55,9 @@ def _strip_markers(content: str) -> str:
     content = _NARRATIVE_BLOCK_RE.sub("", content)
     content = _FOUNDATION_BLOCK_RE.sub("", content)
     content = _SENSE_BLOCK_RE.sub("", content)
+    # Interrupted partials: keep the half-said text (it informs judge's
+    # sense of where the turn was going) but drop the structural marker.
+    content = _INTERRUPTED_RE.sub("", content)
     return content.strip()
 
 
@@ -107,8 +111,12 @@ async def run_judge_inline(session: Session) -> None:
     ]
     parser = StreamParser()
 
+    # Judge runs on the reasoning-tier model (v4-pro by default) — it is
+    # metabolize-side, async, and元认知 by nature. The seconds-to-minutes
+    # latency vs thinker's IM rhythm is acceptable here because the
+    # frontend polls /api/chat/clarity rather than blocking on a stream.
     try:
-        async for chunk in chat_completion_stream(messages):
+        async for chunk in chat_completion_stream(messages, model=get_reasoner_model()):
             for _ in parser.feed(chunk):
                 pass
         for _ in parser.flush():
@@ -137,8 +145,10 @@ async def _stream_judge(session: Session):
     parser = StreamParser()
     sent_clarity = False
 
+    # Same as run_judge_inline — escalate to the reasoning model since
+    # judge is元认知, not interactive浮现.
     try:
-        async for chunk in chat_completion_stream(messages):
+        async for chunk in chat_completion_stream(messages, model=get_reasoner_model()):
             for ev in parser.feed(chunk):
                 # The judge only emits clarity/drift/seed (and we only
                 # surface them on block_end).

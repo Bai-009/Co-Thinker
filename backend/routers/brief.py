@@ -20,17 +20,22 @@ router = APIRouter(prefix="/api/chat", tags=["brief"])
 
 _VOICE_OPEN_RE = re.compile(r"\[VOICE\]\s*")
 _VOICE_CLOSE_RE = re.compile(r"\s*\[/VOICE\]")
+_CONF_BLOCK_RE = re.compile(r"\[CONF\][\s\S]*?\[/CONF\]\s*")
 _FOUNDATION_BLOCK_RE = re.compile(r"\[FOUNDATION\][\s\S]*?\[/FOUNDATION\]")
 _NARRATIVE_BLOCK_RE = re.compile(r"\[FOUNDATION_NARRATIVE\][\s\S]*?\[/FOUNDATION_NARRATIVE\]")
 _SENSE_BLOCK_RE = re.compile(r"\[SENSE\][\s\S]*?\[/SENSE\]")
+_INTERRUPTED_RE = re.compile(r"\s*\[INTERRUPTED\]\s*")
 
 
 def _strip_markers(content: str) -> str:
+    content = _CONF_BLOCK_RE.sub("", content)
     content = _VOICE_OPEN_RE.sub("", content)
     content = _VOICE_CLOSE_RE.sub("", content)
     content = _NARRATIVE_BLOCK_RE.sub("", content)
     content = _FOUNDATION_BLOCK_RE.sub("", content)
     content = _SENSE_BLOCK_RE.sub("", content)
+    # Interrupted partials: keep half-said text, drop the marker.
+    content = _INTERRUPTED_RE.sub("", content)
     return content.strip()
 
 

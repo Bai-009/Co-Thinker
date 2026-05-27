@@ -40,8 +40,7 @@ const Composer = forwardRef(function Composer(
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={streaming ? '在想…' : '说一句'}
-          disabled={streaming}
+          placeholder={streaming ? '在想…（你也可以追一条打断）' : '说一句'}
           rows={1}
           spellCheck="false"
           autoCorrect="off"
@@ -62,10 +61,10 @@ const Composer = forwardRef(function Composer(
           type="button"
           className="send-btn"
           onClick={onSend}
-          disabled={streaming || !value.trim()}
-          aria-label="发送"
+          disabled={!value.trim()}
+          aria-label={streaming && value.trim() ? '追打（打断当前浮现）' : '发送'}
         >
-          {streaming ? (
+          {streaming && !value.trim() ? (
             <span className="send-dots" aria-hidden="true">
               <span></span>
               <span></span>

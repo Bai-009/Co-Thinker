@@ -8,14 +8,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+# Load .env BEFORE any router/store import — store.py reads
+# `os.getenv("COTHINKER_DB")` at module-init time to decide between
+# SQLite and InMemorySessionStore. If load_dotenv runs after the routers
+# imports (which transitively trigger store.py init), the env var is
+# always None, and the app silently falls back to in-memory state — every
+# backend restart loses every session. Order matters here.
+_BASE = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(dotenv_path=os.path.join(_BASE, "..", ".env"))
+
 from routers.brief import router as brief_router
 from routers.judge import router as judge_router
 from routers.session import router as session_router
 from routers.workshop import router as workshop_router
-
-# Load .env from the project root (one level above backend/).
-_BASE = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(dotenv_path=os.path.join(_BASE, "..", ".env"))
 
 
 logging.basicConfig(

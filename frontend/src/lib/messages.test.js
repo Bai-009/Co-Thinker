@@ -38,9 +38,20 @@ describe('parseStoredVoices', () => {
   })
 
   test('returns empty arrays for unstructured content', () => {
-    expect(parseStoredVoices('plain text')).toEqual({ voices: [], confs: [] })
-    expect(parseStoredVoices('')).toEqual({ voices: [], confs: [] })
-    expect(parseStoredVoices(null)).toEqual({ voices: [], confs: [] })
+    const empty = { voices: [], confs: [], interrupted: [] }
+    expect(parseStoredVoices('plain text')).toEqual(empty)
+    expect(parseStoredVoices('')).toEqual(empty)
+    expect(parseStoredVoices(null)).toEqual(empty)
+  })
+
+  test('flags [INTERRUPTED] voices and strips the marker from text', () => {
+    const out = parseStoredVoices(
+      '[VOICE]\n[CONF]0.6[/CONF]\nclean done\n[/VOICE]\n\n' +
+        '[VOICE]\n[CONF]0.3[/CONF]\n[INTERRUPTED]\npartial half-said\n[/VOICE]',
+    )
+    expect(out.voices).toEqual(['clean done', 'partial half-said'])
+    expect(out.confs).toEqual([0.6, 0.3])
+    expect(out.interrupted).toEqual([false, true])
   })
 })
 

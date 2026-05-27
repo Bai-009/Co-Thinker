@@ -52,6 +52,8 @@ SCRATCHPAD_OPEN = "[SCRATCHPAD]"
 SCRATCHPAD_CLOSE = "[/SCRATCHPAD]"
 SENSE_OPEN = "[SENSE]"
 SENSE_CLOSE = "[/SENSE]"
+PLAN_OPEN = "[PLAN]"
+PLAN_CLOSE = "[/PLAN]"
 
 # Judge AI markers
 CLARITY_OPEN = "[CLARITY]"
@@ -68,6 +70,7 @@ ALL_MARKERS = (
     FOUNDATION_NARRATIVE_OPEN, FOUNDATION_NARRATIVE_CLOSE,
     SCRATCHPAD_OPEN, SCRATCHPAD_CLOSE,
     SENSE_OPEN, SENSE_CLOSE,
+    PLAN_OPEN, PLAN_CLOSE,
     CLARITY_OPEN, CLARITY_CLOSE,
     DRIFT_OPEN, DRIFT_CLOSE,
     SEED_OPEN, SEED_CLOSE,
@@ -170,6 +173,12 @@ class StreamParser:
     clarity_buf: str = ""
     drift_buf: str = ""
     seed_buf: str = ""
+    plan_buf: str = ""
+    # True once [PLAN] open was seen — distinguishes "rewriter emitted an
+    # empty plan" (clear the session.plan) from "rewriter didn't emit [PLAN]
+    # at all" (leave existing plan untouched). Without this, an empty
+    # buffer is ambiguous.
+    plan_seen: bool = False
 
     # Voice index offset, so a parser can be told "voices in this stream
     # actually start at index N" — useful when one workshop turn aggregates
@@ -187,7 +196,7 @@ class StreamParser:
                     self.buf,
                     VOICE_OPEN, SILENCE,
                     FOUNDATION_OPEN, FOUNDATION_CHANGE_OPEN, FOUNDATION_NARRATIVE_OPEN,
-                    SCRATCHPAD_OPEN, SENSE_OPEN,
+                    SCRATCHPAD_OPEN, SENSE_OPEN, PLAN_OPEN,
                     CLARITY_OPEN, DRIFT_OPEN, SEED_OPEN,
                 )
                 if idx < 0:
@@ -214,6 +223,9 @@ class StreamParser:
                     self.state = "in_scratchpad"
                 elif marker == SENSE_OPEN:
                     self.state = "in_sense"
+                elif marker == PLAN_OPEN:
+                    self.state = "in_plan"
+                    self.plan_seen = True
                 elif marker == CLARITY_OPEN:
                     self.state = "in_clarity"
                 elif marker == DRIFT_OPEN:
@@ -345,6 +357,19 @@ class StreamParser:
                     self.buf = self.buf[safe:]
                 return
 
+            if self.state == "in_plan":
+                idx = self.buf.find(PLAN_CLOSE)
+                if idx >= 0:
+                    self.plan_buf += self.buf[:idx]
+                    self.buf = self.buf[idx + len(PLAN_CLOSE):]
+                    self.state = "preamble"
+                    continue
+                safe = len(self.buf) - MARKER_LOOKAHEAD
+                if safe > 0:
+                    self.plan_buf += self.buf[:safe]
+                    self.buf = self.buf[safe:]
+                return
+
             if self.state == "in_clarity":
                 idx = self.buf.find(CLARITY_CLOSE)
                 if idx >= 0:
@@ -418,6 +443,9 @@ class StreamParser:
             self.buf = ""
         elif self.state == "in_sense" and self.buf:
             self.sense_buf += self.buf
+            self.buf = ""
+        elif self.state == "in_plan" and self.buf:
+            self.plan_buf += self.buf
             self.buf = ""
         elif self.state == "in_clarity" and self.buf:
             self.clarity_buf += self.buf

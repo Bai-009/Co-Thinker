@@ -5,6 +5,7 @@ import { sessionedFetch } from './session'
 
 export const API = {
   workshop: '/api/chat/workshop',
+  edit: '/api/chat/edit',
   judge: '/api/chat/judge',
   history: '/api/chat/history',
   reset: '/api/chat/reset',

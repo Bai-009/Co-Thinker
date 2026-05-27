@@ -1,21 +1,24 @@
 import React from 'react'
 
-import { parseFoundationItems } from '../lib/messages'
+import { parseFoundationItems, parsePlanItems } from '../lib/messages'
 
 export default function FoundationModal({
   open,
   text,
   narrative,
+  plan,
   drift,
   onClose,
 }) {
   if (!open) return null
 
   const items = parseFoundationItems(text || '')
+  const planItems = parsePlanItems(plan || '')
   const hasNarrative = !!(narrative && narrative.trim())
   const hasList = items.length > 0
+  const hasPlan = planItems.length > 0
   const hasDrift = !!(drift && drift.trim())
-  const hasAny = hasNarrative || hasList || hasDrift
+  const hasAny = hasNarrative || hasList || hasPlan || hasDrift
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -46,6 +49,29 @@ export default function FoundationModal({
           )}
           {hasNarrative && (
             <div className="foundation-narrative">{narrative}</div>
+          )}
+          {hasPlan && (
+            <div className="foundation-plan">
+              <div className="foundation-plan-label">
+                阶段
+                <span className="foundation-plan-progress">
+                  {planItems.filter((it) => it.done).length} / {planItems.length}
+                </span>
+              </div>
+              <ul className="foundation-plan-list">
+                {planItems.map((it, i) => (
+                  <li
+                    key={i}
+                    className={`foundation-plan-item${it.done ? ' is-done' : ''}`}
+                  >
+                    <span className="foundation-plan-check" aria-hidden="true">
+                      {it.done ? '✓' : '○'}
+                    </span>
+                    <span className="foundation-plan-text">{it.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {hasList && (
             <details className="foundation-structure">

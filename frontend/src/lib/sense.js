@@ -14,11 +14,16 @@
 //
 // The two channels are layered through different CSS custom properties.
 //
-// Corner anchors for color temperature (parchment family, never dark):
+// Corner anchors for color temperature.
 //   (0,0)  lost together         — pale cool gray
 //   (1,0)  clear but disconnected — neutral cream
 //   (0,1)  uncertain but felt    — muted lavender
 //   (1,1)  in tune & confident   — warm sand
+//
+// Light corners are the parchment family. Dark corners are the same
+// semantic emotions translated to "夜读灯下的旧期刊"——deep warm browns
+// with the same hue family, never grayscale invert. Hue stays warm
+// across both themes; lightness flips.
 
 export const SENSE_BASE_CORNERS = {
   c00: [228, 230, 234],
@@ -32,6 +37,30 @@ export const SENSE_ACCENT_CORNERS = {
   c10: [192, 176, 142],
   c01: [180, 165, 198],
   c11: [210, 162, 128],
+}
+
+// Dark mode: same 4 emotional corners, set in deep warm brown lighting.
+// Lightness ~7-12% (deep base) so text contrast holds; hue still warm
+// with subtle cool/warm shifts at corners (cooler at lost, warmer at tuned).
+export const SENSE_BASE_CORNERS_DARK = {
+  c00: [22, 24, 28],   // pale cool gray → cold brown-gray
+  c10: [30, 24, 18],   // neutral cream  → warm dark
+  c01: [24, 22, 30],   // muted lavender → cool dusk
+  c11: [34, 26, 16],   // warm sand      → ember
+}
+
+// Accents on dark sit higher in lightness (~30-45%) and saturated enough
+// to glow when blended with `screen` mode against the deep base.
+export const SENSE_ACCENT_CORNERS_DARK = {
+  c00: [70, 84, 110],   // cool dusk blue
+  c10: [120, 96, 64],   // warm tan
+  c01: [88, 76, 118],   // muted plum
+  c11: [150, 110, 70],  // amber ember
+}
+
+function currentTheme() {
+  if (typeof document === 'undefined') return 'light'
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 }
 
 export function bilerp(corners, x, y) {
@@ -56,8 +85,12 @@ export function applySense(certainty, resonance) {
   const x = Math.max(0, Math.min(1, certainty))
   const y = Math.max(0, Math.min(1, resonance))
 
-  const base = bilerp(SENSE_BASE_CORNERS, x, y)
-  const accent = bilerp(SENSE_ACCENT_CORNERS, x, y)
+  const isDark = currentTheme() === 'dark'
+  const baseCorners = isDark ? SENSE_BASE_CORNERS_DARK : SENSE_BASE_CORNERS
+  const accentCorners = isDark ? SENSE_ACCENT_CORNERS_DARK : SENSE_ACCENT_CORNERS
+
+  const base = bilerp(baseCorners, x, y)
+  const accent = bilerp(accentCorners, x, y)
   const engagement = computeEngagement(x, y)
 
   const root = document.documentElement

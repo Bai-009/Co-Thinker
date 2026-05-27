@@ -32,12 +32,14 @@ const FLASH_DURATION_MS = 1800
 export default function useFoundationPoll({
   setFoundation,
   setFoundationNarrative,
+  setPlan,
   judgeHydrate,
 }) {
   const [flash, setFlash] = useState(false)
   const lastSeenRef = useRef({
     foundation: '',
     foundation_narrative: '',
+    plan: '',
     clarity: 0,
     drift: '',
     seed: '',
@@ -69,6 +71,7 @@ export default function useFoundationPoll({
 
       const newFoundation = f.foundation || ''
       const newNarrative = f.foundation_narrative || ''
+      const newPlan = f.plan || ''
       if (newFoundation !== last.foundation) {
         setFoundation(newFoundation)
         last.foundation = newFoundation
@@ -77,6 +80,11 @@ export default function useFoundationPoll({
       if (newNarrative !== last.foundation_narrative) {
         setFoundationNarrative(newNarrative)
         last.foundation_narrative = newNarrative
+        changed = true
+      }
+      if (newPlan !== last.plan) {
+        if (setPlan) setPlan(newPlan)
+        last.plan = newPlan
         changed = true
       }
 
@@ -114,7 +122,7 @@ export default function useFoundationPoll({
       // wait for the next one.
     }
     return changed
-  }, [setFoundation, setFoundationNarrative, judgeHydrate])
+  }, [setFoundation, setFoundationNarrative, setPlan, judgeHydrate])
 
   const start = useCallback(() => {
     cancelPending()
@@ -154,6 +162,7 @@ export default function useFoundationPoll({
     if (typeof data.foundation_narrative === 'string') {
       last.foundation_narrative = data.foundation_narrative
     }
+    if (typeof data.plan === 'string') last.plan = data.plan
     if (typeof data.clarity === 'number') last.clarity = data.clarity
     if (typeof data.drift === 'string') last.drift = data.drift
     if (typeof data.seed === 'string') last.seed = data.seed
@@ -172,6 +181,7 @@ export default function useFoundationPoll({
     lastSeenRef.current = {
       foundation: '',
       foundation_narrative: '',
+      plan: '',
       clarity: 0,
       drift: '',
       seed: '',
