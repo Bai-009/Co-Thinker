@@ -50,6 +50,9 @@ Thumbs.db
 # Project local
 _archive/
 
+# Co-Thinker Protocol skill sessions (local thinking state)
+.cothinker/
+
 # Personal — never commit
 resume/
 .claude/

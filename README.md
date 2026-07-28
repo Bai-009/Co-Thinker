@@ -118,6 +118,22 @@ cd backend && python -m pytest    # 50 passing
 cd frontend && npm test            # 27 passing
 ```
 
+### Cursor skill (portable protocol)
+
+The thinking protocol also ships as a Cursor Agent Skill:
+
+```
+.cursor/skills/co-thinker-protocol/
+  SKILL.md                 Voice → foundation file → brief workflow
+  references/              principles · voice · foundation · brief
+  assets/                  foundation + brief templates
+```
+
+In Cursor Agent chat, invoke `/co-thinker-protocol` (or ask to 想清楚 / 出简报).
+Session files land in `.cothinker/<slug>/` (gitignored). This is not a
+replacement for the app's dual-timeline runtime — it ports voice cadence,
+foundation discipline, and brief handoff into the editor.
+
 ### Project layout
 
 ```
@@ -154,6 +170,8 @@ frontend/
       useConversations.js   Sidebar list + current id
     lib/                    sse · session · sense · api · messages (+ unit tests)
     index.css               Visual system — read the rules at the top before editing
+.cursor/skills/
+  co-thinker-protocol/      Portable Cursor skill (voice + foundation + brief)
 docker-compose.yml          Backend + nginx-served frontend
 ```
 
@@ -210,6 +228,12 @@ Co-Thinker 是一个 LLM **思考伙伴**工作台。每次会话的主体是**�
 - **Judge AI 元认知**——独立 LLM pass 输出 clarity / drift / seed，驱动颗粒密度、地基悬浮注释、composer 幽灵提示
 - **执行简报蒸馏**——把整次思考活动凝结成给执行 agent 的 markdown 心智简报
 - **per-session SQLite 持久化**——`X-Session-Id` 头隔离会话
+
+### Cursor Skill（可搬运协议）
+
+思考协议同时以 Cursor Agent Skill 形式提供：`.cursor/skills/co-thinker-protocol/`。
+在 Agent 对话里用 `/co-thinker-protocol`，或直接说「想清楚 / 出简报」。
+会话状态写在 `.cothinker/<slug>/`（已 gitignore）。这不是 App 双时间线运行时的替代品——它把 voice 节奏、地基纪律、Brief 交接搬进编辑器。
 
 ### 视觉系统
 
