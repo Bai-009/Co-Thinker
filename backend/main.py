@@ -5,6 +5,8 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -34,6 +36,8 @@ log = logging.getLogger("cothinker")
 async def lifespan(app: FastAPI):
     log.info("Co-Thinker backend starting on port %s", os.getenv("PORT", "8000"))
     yield
+    from runtime import shutdown
+    await shutdown()
     log.info("Co-Thinker backend shutting down")
 
 
@@ -55,7 +59,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Session-Id"],
     expose_headers=["X-Session-Id"],
 )
@@ -68,7 +72,14 @@ app.include_router(session_router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from llm import get_llm_settings
+    key, _, model = get_llm_settings()
+    return {"status": "ok", "model_configured": bool(key), "model": model}
+
+
+_dist = Path(_BASE).parent / "frontend" / "dist"
+if _dist.is_dir():
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ brief shaped for hand-off to coding agents (Cursor / Lovable / Kimi etc).
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -56,6 +57,7 @@ def _format_history(history: list[dict]) -> str:
 
 
 async def _stream_brief(session: Session):
+    session = deepcopy(session)
     if not session.messages:
         yield sse_event({
             "type": "error",
@@ -68,6 +70,10 @@ async def _stream_brief(session: Session):
         parts.append("# 共识地基（散文自述）\n\n" + session.foundation_narrative.strip())
     if session.foundation.strip():
         parts.append("# 共识地基（编号清单）\n\n" + session.foundation.strip())
+    if session.plan.strip():
+        parts.append("# 已形成的计划\n\n" + session.plan)
+    if session.scratchpad.strip():
+        parts.append("# 当前问题与未确认提案（不可当作已确认要求）\n\n" + session.scratchpad)
     convo = _format_history(session.messages)
     if convo:
         parts.append("# 对话历史\n\n" + convo)
@@ -87,7 +93,7 @@ async def _stream_brief(session: Session):
             yield sse_event({"type": "brief_delta", "content": chunk})
         yield sse_event({"type": "brief_done", "brief": full.strip()})
     except Exception as exc:
-        yield sse_event({"type": "error", "detail": f"LLM 调用失败: {exc}"})
+        yield sse_event({"type": "error", "detail": "生成暂未完成，已有对话和记录不受影响。可以重试。"})
 
 
 @router.post("/brief")

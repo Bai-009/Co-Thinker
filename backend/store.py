@@ -202,11 +202,11 @@ class Session:
         self.plan = ""
         self.foundation_history = []
 
-    def snapshot_state(self) -> dict:
+    def snapshot_state(self, prefix: int | None = None) -> dict:
         """Capture current metabolized state as a snapshot dict, tagged
         with the current message-prefix-count."""
         return {
-            "prefix": len(self.messages),
+            "prefix": len(self.messages) if prefix is None else prefix,
             "foundation": self.foundation,
             "foundation_narrative": self.foundation_narrative,
             "scratchpad": self.scratchpad,
@@ -218,11 +218,11 @@ class Session:
             "plan": self.plan,
         }
 
-    def push_snapshot(self) -> None:
+    def push_snapshot(self, prefix: int | None = None) -> None:
         """Append a snapshot of current state. If a snapshot with the
         same prefix already exists (shouldn't happen normally, but defends
         against double-metabolize), overwrite it."""
-        snap = self.snapshot_state()
+        snap = self.snapshot_state(prefix)
         # Drop any existing snapshot with the same prefix.
         self.foundation_history = [
             s for s in self.foundation_history if s.get("prefix") != snap["prefix"]
