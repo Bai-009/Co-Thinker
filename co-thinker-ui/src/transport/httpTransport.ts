@@ -2,11 +2,20 @@
 // 服务端只有消息正文、地基正文和记忆状态；id / sequence / version / 地基历史在这里补出来，
 // 让界面对示例与真实两条传输层一视同仁。
 
+import { normalize } from '../domain/markdown'
+import {
+  composeReference,
+  parseSourceLabel,
+  sourceLabel,
+  splitReference,
+  type ReferenceText,
+} from '../domain/referenceText'
 import type {
   BriefSnapshot,
   Groundwork,
   GroundworkClaim,
   Message,
+  Reference,
   SessionSnapshot,
   SessionSummary,
 } from '../domain/types'
@@ -146,31 +155,75 @@ export function parseClaims(list: string): GroundworkClaim[] {
   })
 }
 
-/** 服务端的消息没有 id：按位置编号，version 是正文指纹。引用与幂等键从上一份本地记录里接过来。 */
-function toMessages(sid: string, raw: RawMessage[], previous: Message[]): Message[] {
+/** 人这一边的正文与 version 只看新表达，不算「引用材料」块；发送时的乐观记录和刷新后的才一致。 */
+function userText(content: string): string {
+  return splitReference(content).text
+}
+
+/**
+ * 服务端的消息没有 id：按位置编号，version 是正文指纹。引用与幂等键从上一份本地记录里接过来；
+ * 本地没有时，从正文里的「引用材料」块拆回来，按来源标签指回原句。
+ */
+export function toMessages(sid: string, raw: RawMessage[], previous: Message[]): Message[] {
   const out: Message[] = []
   raw.forEach((m, i) => {
     if (m.role !== 'user' && m.role !== 'assistant') return
-    const parsed =
-      m.role === 'assistant'
-        ? parseAssistant(m.content)
-        : { text: m.content, confidence: undefined, interrupted: false }
+    let text: string
+    let confidence: number | undefined
+    let interrupted = false
+    let embedded: ReferenceText | undefined
+    if (m.role === 'assistant') {
+      const parsed = parseAssistant(m.content)
+      text = parsed.text
+      confidence = parsed.confidence
+      interrupted = parsed.interrupted
+    } else {
+      const split = splitReference(m.content)
+      text = split.text
+      embedded = split.reference
+    }
     const prev = previous[i]
-    const carry = prev && prev.role === m.role && prev.text === parsed.text ? prev : undefined
+    const carry = prev && prev.role === m.role && prev.text === text ? prev : undefined
     out.push({
       id: `${sid}:${i}`,
       sequence: i,
-      version: fingerprint(m.content),
+      version: fingerprint(m.role === 'user' ? text : m.content),
       role: m.role,
-      text: parsed.text,
-      status: parsed.interrupted ? 'interrupted' : 'complete',
-      confidence: parsed.confidence,
-      reference: carry?.reference,
+      text,
+      status: interrupted ? 'interrupted' : 'complete',
+      confidence,
+      reference: carry?.reference ?? (embedded ? rebuildReference(sid, embedded, raw, i) : undefined),
       clientMessageId: carry?.clientMessageId,
       createdAt: carry?.createdAt ?? Date.now(),
     })
   })
   return out
+}
+
+/** 从来源标签指回原句，只在被点名的那句里找引文的位置，不跨消息找。找不到就是依据已改变。 */
+function rebuildReference(sid: string, ref: ReferenceText, raw: RawMessage[], before: number): Reference {
+  const label = parseSourceLabel(ref.source)
+  const src = label && label.sequence < before ? raw[label.sequence] : undefined
+  if (!label || !src || src.role !== label.role) {
+    return { sessionId: sid, sourceId: '', sourceVersion: 0, quote: ref.quote }
+  }
+  const srcText = src.role === 'assistant' ? parseAssistant(src.content).text : userText(src.content)
+  const start = normalize(srcText).indexOf(ref.quote)
+  return {
+    sessionId: sid,
+    sourceId: `${sid}:${label.sequence}`,
+    sourceVersion: fingerprint(src.role === 'user' ? srcText : src.content),
+    range: start >= 0 ? { start, end: start + ref.quote.length } : { start: 0, end: 0 },
+    quote: ref.quote,
+  }
+}
+
+/** 发给服务端的正文：带引用时按「引用材料」格式拼进去，来源标签指向被引的那句。 */
+export function contentForServer(text: string, reference: Reference | undefined, messages: Message[]): string {
+  if (!reference?.quote) return text
+  const src = messages.find((m) => m.id === reference.sourceId)
+  const source = src ? sourceLabel(src.role, src.sequence) : '来源不在这次对话里'
+  return composeReference(text, { source, quote: reference.quote })
 }
 
 /** 读 `data: {...}\n\n` 的事件流。 */
@@ -429,7 +482,7 @@ export class HttpTransport implements Transport {
       'POST',
       path,
       s.id,
-      input.mode === 'retry' ? undefined : { content: input.text },
+      input.mode === 'retry' ? undefined : { content: contentForServer(input.text, input.reference, base) },
       signal,
     )
 

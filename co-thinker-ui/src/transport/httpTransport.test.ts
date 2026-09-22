@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, parseAssistant, parseClaims, readSse } from './httpTransport'
+import { resolveReference } from '../domain/reference'
+import { contentForServer, fingerprint, parseAssistant, parseClaims, readSse, toMessages } from './httpTransport'
 
 describe('服务端格式 → 领域', () => {
   it('多段浮现拆成正文，把握取平均，中断标记不留在正文里', () => {
@@ -48,5 +49,36 @@ describe('服务端格式 → 领域', () => {
       { type: 'voice_start', index: 0 },
       { type: 'voice_delta', content: '你好' },
     ])
+  })
+})
+
+describe('引用走进正文', () => {
+  const sid = 's1'
+  const raw = [
+    { role: 'user', content: '我想做一个整理想法的工具。' },
+    { role: 'assistant', content: '[VOICE][CONF]0.60[/CONF]\n先分清给谁用：**自己**还是别人？[/VOICE]' },
+  ]
+  const quoted = '引用材料（模型那一边 第 2 句，引用不代表认同）：\n> 自己还是别人？\n\n先给自己用。'
+
+  it('发送时把引用拼进正文，来源标签指向被引那句', () => {
+    const messages = toMessages(sid, raw, [])
+    const ref = { sessionId: sid, sourceId: 's1:1', sourceVersion: messages[1].version, quote: '自己还是别人？' }
+    expect(contentForServer('先给自己用。', ref, messages)).toBe(quoted)
+    expect(contentForServer('先给自己用。', undefined, messages)).toBe('先给自己用。')
+  })
+
+  it('刷新后从正文拆回引用，指回原句并定位到那一段', () => {
+    const messages = toMessages(sid, [...raw, { role: 'user', content: quoted }], [])
+    const last = messages[2]
+    expect(last.text).toBe('先给自己用。')
+    expect(last.version).toBe(fingerprint('先给自己用。'))
+    expect(last.reference).toMatchObject({ sourceId: 's1:1', sourceVersion: messages[1].version, quote: '自己还是别人？' })
+    expect(resolveReference(last.reference, messages, sid).status).toBe('resolved')
+  })
+
+  it('原句变了就标依据已改变，不去别的消息里找', () => {
+    const stored = [raw[0], { role: 'assistant', content: '[VOICE]改过的话[/VOICE]' }, { role: 'user', content: quoted }]
+    const messages = toMessages(sid, stored, [])
+    expect(resolveReference(messages[2].reference, messages, sid).status).toBe('changed')
   })
 })
