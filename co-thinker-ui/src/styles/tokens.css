@@ -67,9 +67,12 @@
   /* 节奏：交互 ≤600ms；状态 4–6s；呼吸 3.6s；氛围漂移 18s。互不同步。 */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-micro: 280ms;
-  --dur-short: 380ms;
-  --dur-long: 600ms;
+  /* 栏的开合、输入框的位移：起得快、落得慢，一条曲线。 */
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-panel: 480ms;
+  --dur-micro: 140ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
   --dur-breathe: 3.6s;
 
   --z-base: 1;

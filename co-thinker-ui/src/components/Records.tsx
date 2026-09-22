@@ -49,7 +49,7 @@ export function Records(props: Props) {
         {groundwork ? (
           <p className="ct-record-summary">{groundwork.prose}</p>
         ) : (
-          <p className="ct-empty-note">还没有沉淀出共识——先继续聊。</p>
+          <p className="ct-empty-note">还没有共识。</p>
         )}
 
         {claims.length > 0 && (
@@ -122,10 +122,6 @@ export function Records(props: Props) {
               </button>
             ))}
           </section>
-        )}
-
-        {groundwork && (
-          <p className="ct-record-foot">每轮回看时自动更新——按共识的累积长，不用管理。</p>
         )}
       </div>
     </div>

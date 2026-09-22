@@ -484,7 +484,6 @@ export class ExampleTransport implements Transport {
     }
     if (uncovered.length) {
       lines.push(`## 新增表达，尚待核对`)
-      lines.push('请求这份文档时，下面这些话还没有被共同记录覆盖。')
       uncovered.forEach((t) => lines.push(`- ${t}`))
     }
     lines.push(`---`)

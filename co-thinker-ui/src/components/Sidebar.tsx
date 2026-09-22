@@ -71,7 +71,7 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
             ))}
           </section>
         ))}
-        {sessions.length === 0 && <p className="ct-nav-empty">还没有对话——发一句开始。</p>}
+        {sessions.length === 0 && <p className="ct-nav-empty">还没有对话</p>}
       </nav>
     </div>
   )

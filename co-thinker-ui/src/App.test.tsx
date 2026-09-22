@@ -89,11 +89,11 @@ describe('一段完整的操作', () => {
     const user = userEvent.setup()
     await firstTurn(user)
 
-    // 沉淀那一行出现在回应之后；没有更后面的话，就不画「沉淀到这里」。
+    // 地基那一行出现在回应之后，只给编号；对话里不再画分界线。
     await waitFor(() => expect(screen.getByRole('button', { name: '01' })).toBeInTheDocument(), {
       timeout: 6000,
     })
-    expect(screen.getByText(/定下/)).toBeInTheDocument()
+    expect(document.querySelector('.ct-settled')).toHaveTextContent('地基')
     expect(screen.queryByText('沉淀到这里')).toBeNull()
 
     expect(screen.getByText(/城市指南那种形式我不做/)).toBeInTheDocument()

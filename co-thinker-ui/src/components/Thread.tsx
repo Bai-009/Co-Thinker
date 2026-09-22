@@ -47,30 +47,30 @@ function voiceStyle(confidence?: number): CSSProperties {
   } as CSSProperties
 }
 
-/** 一轮之后地基定了什么、添了什么。编号点过去就到那一条。 */
+/** 一轮之后地基里落下了哪几条：只给编号，不说话。定下的实，松动的虚，被取代的画个箭头。编号点过去就到那一条。 */
 function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: number) => void }) {
-  const at = (n: number) => (
-    <button key={n} type="button" title="在地基里看" onClick={() => onLocate(n)}>
+  const at = (n: number, className?: string) => (
+    <button key={`${className ?? ''}${n}`} type="button" className={className} title="在地基里看" onClick={() => onLocate(n)}>
       {num(n)}
     </button>
   )
-  const list = (ns: number[]) => ns.flatMap((n, i) => (i ? ['、', at(n)] : [at(n)]))
-  const parts: ReactNode[] = []
-  if (delta.confirmed.length) parts.push(<span key="c">定下 {list(delta.confirmed)}</span>)
-  if (delta.tentative.length) parts.push(<span key="t">{list(delta.tentative)} 松动</span>)
-  delta.superseded.forEach(([from, to]) =>
-    parts.push(
-      <span key={`s${from}`}>
-        {at(from)} 被 {to ? at(to) : '后来的说法'} 取代
-      </span>,
-    ),
-  )
+  const parts: ReactNode[] = [
+    ...delta.confirmed.map((n) => at(n)),
+    ...delta.tentative.map((n) => at(n, 'is-tentative')),
+    ...delta.superseded.map(([from, to]) => (
+      <span key={`s${from}`} className="is-superseded">
+        {to ? at(from) : <s>{num(from)}</s>}
+        {to && <span aria-hidden="true">→</span>}
+        {to && at(to)}
+      </span>
+    )),
+  ]
   // 问题的增减不在这里报：还在松动那一节本身就是当前的问题。
   if (!parts.length) return null
   return (
-    <p className="ct-settled">
+    <p className="ct-settled" aria-label="这一轮写进地基的条目">
       <span className="ct-settled-label">地基</span>
-      <span>{parts.flatMap((p, i) => (i ? [' · ', p] : [p]))}</span>
+      <span>{parts}</span>
     </p>
   )
 }
@@ -149,15 +149,20 @@ export function Thread(props: Props) {
       onKeyUp={readSelection}
       onTouchEnd={readSelection}
     >
-      {messages.map((message, index) => {
+      {messages.map((message) => {
         const state = resolveReference(message.reference, messages, sessionId)
         const highlighted = flash === message.id
         const delta = settled.get(message.sequence)
-        const atBoundary = boundary === message.sequence && index < messages.length - 1
+        // 地基还没覆盖到的话，墨色浅一层；落进地基那一刻再深回来。不用文字说。
+        const unsettled = boundary == null || message.sequence > boundary
 
         const turn =
           message.role === 'user' ? (
-            <article className="ct-user-turn" data-message-row={message.id} aria-label="我的表达">
+            <article
+              className={`ct-user-turn${unsettled ? ' is-unsettled' : ''}`}
+              data-message-row={message.id}
+              aria-label="我的表达"
+            >
               <div
                 className={`ct-user-text${highlighted ? ' is-highlighted' : ''}${editingId === message.id ? ' is-editing' : ''}`}
                 data-message-root={message.id}
@@ -190,7 +195,7 @@ export function Thread(props: Props) {
             </article>
           ) : (
             <article
-              className="ct-assistant-turn"
+              className={`ct-assistant-turn${unsettled ? ' is-unsettled' : ''}`}
               data-message-row={message.id}
               aria-label="Co-Thinker 的回应"
             >
@@ -221,7 +226,7 @@ export function Thread(props: Props) {
                 </div>
               )}
               {message.status === 'interrupted' && (
-                <div className="ct-turn-status">已停下，可以接着说。</div>
+                <div className="ct-turn-status">已停下</div>
               )}
               {message.status === 'failed' && (
                 <div className="ct-turn-error" role="alert">
@@ -239,23 +244,6 @@ export function Thread(props: Props) {
           <Fragment key={message.id}>
             {turn}
             {message.role === 'user' && delta && <Settled delta={delta} onLocate={onLocateClaim} />}
-            {atBoundary && (
-              <div
-                className={`ct-boundary${memory.state === 'failed' ? ' is-failed' : ''}`}
-                role="status"
-              >
-                {memory.state === 'failed' ? (
-                  <>
-                    <span>这一轮没有沉淀成功</span>
-                    <button type="button" onClick={onRetryMemory}>
-                      重试
-                    </button>
-                  </>
-                ) : (
-                  <span>沉淀到这里</span>
-                )}
-              </div>
-            )}
           </Fragment>
         )
       })}
@@ -263,14 +251,14 @@ export function Thread(props: Props) {
       {memory.state === 'updating' && (
         <p className="ct-settled is-updating" role="status">
           <span className="ct-status-dot" />
-          <span>正在沉淀…</span>
+          <span className="ct-sr-only">地基更新中</span>
         </p>
       )}
-      {memory.state === 'failed' && boundary == null && (
+      {memory.state === 'failed' && (
         <p className="ct-settled is-failed" role="alert">
           <span className="ct-settled-label">地基</span>
           <span>
-            这一轮没有沉淀成功{' '}
+            没有更新{' '}
             <button type="button" onClick={onRetryMemory}>
               重试
             </button>

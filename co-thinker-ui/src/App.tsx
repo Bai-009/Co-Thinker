@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from './controller/useSession'
 import { Thread } from './components/Thread'
 import { Composer } from './components/Composer'
 import { Records } from './components/Records'
 import { Sidebar } from './components/Sidebar'
-import { Dialog, IconButton } from './components/Dialog'
+import { Dialog, IconButton, canAnimate } from './components/Dialog'
 import { Markdown } from './components/Markdown'
 import { useScrollAnchor } from './hooks/useScrollAnchor'
 import { resolveReference } from './domain/reference'
@@ -38,16 +38,27 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const { state, draft, actions } = s
   const [locate, setLocate] = useState<{ id: string; n: number } | null>(null)
   const [claimLocate, setClaimLocate] = useState<{ n: number; k: number } | null>(null)
-  // 宽屏一开始就并排；窄屏等人来开，不上来就弹一层。
-  const [recordOpen, setRecordOpen] = useState(
-    () => typeof matchMedia === 'function' && matchMedia('(min-width: 1280px)').matches,
-  )
+  // 地基不主动打开：头几轮没什么可看的，等人来开。
+  const [recordOpen, setRecordOpen] = useState(false)
   // 对话列表：宽屏是一栏，收放记住；窄屏是从左边推出来的抽屉。
   const [navPinned, setNavPinned] = useState(
     () => repository.read<boolean>('nav', (v): v is boolean => typeof v === 'boolean') ?? true,
   )
   const [navDrawer, setNavDrawer] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // 复制简报之后按钮说一声「已复制」，一秒多就恢复。
+  const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<number | undefined>(undefined)
+  const copyBrief = useCallback(async (markdown: string) => {
+    try {
+      await navigator.clipboard?.writeText(markdown)
+      setCopied(true)
+      window.clearTimeout(copyTimer.current)
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      /* 剪贴板不可用就不说话 */
+    }
+  }, [])
   // 两栏等宽，每栏都得放得下一页正文。
   const wide = useMedia('(min-width: 1280px)')
   const roomy = useMedia('(min-width: 1120px)')
@@ -93,6 +104,46 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const brief = s.brief
   const briefOpen = Boolean(brief.snapshot || brief.loading || brief.error)
   const showRecords = recordOpen && hasMessages
+
+  // 首屏和对话之间：输入框从中间滑到底部（或回去），标题在原地淡去，而不是跳过去。
+  const mainRef = useRef<HTMLElement>(null)
+  const lastRects = useRef<{ composer: DOMRect; empty: DOMRect | null; main: DOMRect } | null>(null)
+  const [leaving, setLeaving] = useState<{ top: number; left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main || !canAnimate()) return
+    const from = lastRects.current
+    const composer = main.querySelector<HTMLElement>('.ct-composer')
+    if (from && composer) {
+      const to = composer.getBoundingClientRect()
+      const dx = from.composer.left - to.left
+      const dy = from.composer.top - to.top
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        composer.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px)`, width: `${from.composer.width}px` },
+            { transform: 'none', width: `${to.width}px` },
+          ],
+          { duration: 560, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
+        )
+      }
+      if (!blank && from.empty) {
+        setLeaving({ top: from.empty.top - from.main.top, left: from.empty.left - from.main.left, width: from.empty.width })
+        const t = window.setTimeout(() => setLeaving(null), 400)
+        return () => window.clearTimeout(t)
+      }
+    }
+  }, [blank])
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    const composer = main?.querySelector('.ct-composer')
+    if (!main || !composer) return
+    lastRects.current = {
+      composer: composer.getBoundingClientRect(),
+      empty: main.querySelector('.ct-empty:not(.is-leaving)')?.getBoundingClientRect() ?? null,
+      main: main.getBoundingClientRect(),
+    }
+  })
 
   const records = (
     <Records
@@ -157,8 +208,8 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     <div
       className={`ct-app${showNav ? ' has-nav' : ''}${showRecords && wide ? ' has-records' : ''}${blank ? ' is-welcome' : ''}`}
     >
-      {showNav && (
-        <aside className="ct-nav">
+      {roomy && (
+        <aside className="ct-nav" aria-hidden={!navPinned}>
           <div className="ct-nav-head">
             {brand}
             {navToggle}
@@ -199,7 +250,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         </div>
       </header>
 
-      <main className="ct-main">
+      <main className="ct-main" ref={mainRef}>
         {hasMessages && (
           <div className="ct-running-head" title={title}>
             {title}
@@ -269,9 +320,19 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           onDropReference={() => s.setDraft({ reference: null })}
           onLocate={requestLocate}
         />
+        {leaving && (
+          <div className="ct-empty is-leaving" aria-hidden="true" style={leaving}>
+            <h1 className="ct-empty-headline">Prompt as crystallized thinking</h1>
+            <p className="ct-empty-sub">Prompt 不是输入技巧，而是共识后的思考结晶</p>
+          </div>
+        )}
       </main>
 
-      {showRecords && wide && <aside className="ct-records">{records}</aside>}
+      {wide && hasMessages && (
+        <aside className="ct-records-track" aria-hidden={!recordOpen}>
+          <div className="ct-records">{records}</div>
+        </aside>
+      )}
 
       <Dialog
         open={showRecords && !wide}
@@ -290,7 +351,6 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         open={briefOpen}
         onClose={actions.closeBrief}
         title="执行简报"
-        subtitle="递给 Cursor / Lovable / Kimi 用——把这场思考里达成的一切凝结成一段。"
         className="ct-brief-dialog"
       >
         {brief.loading && <p className="ct-working">正在凝结这场对话…</p>}
@@ -318,15 +378,11 @@ export default function App({ transport }: { transport?: Transport } = {}) {
               </div>
             </div>
             <div className="ct-dialog-footer">
-              <button type="button" className="ct-secondary" onClick={() => void actions.generateBrief()}>
+              <button type="button" className="ct-ghost" onClick={() => void actions.generateBrief()}>
                 重新生成
               </button>
-              <button
-                type="button"
-                className="ct-primary"
-                onClick={() => void navigator.clipboard?.writeText(brief.snapshot!.markdown)}
-              >
-                复制
+              <button type="button" className="ct-primary" onClick={() => void copyBrief(brief.snapshot!.markdown)}>
+                {copied ? '已复制' : '复制'}
               </button>
             </div>
           </>
