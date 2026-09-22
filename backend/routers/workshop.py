@@ -25,6 +25,8 @@ behind the浮现, not in lockstep.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
+import os
 import logging
 from typing import AsyncIterator
 
@@ -34,6 +36,7 @@ from fastapi.responses import StreamingResponse
 from deps import SESSION_HEADER, get_session
 from llm import chat_completion_stream
 from models import ChatRequest
+from runtime import runtime_for, spawn, memory_status
 from sse import (
     StreamParser,
     parse_clamped_float,
@@ -44,7 +47,6 @@ from store import (
     Session,
     get_foundation_rewriter_prompt,
     get_thinker_prompt,
-    session_async_lock,
     store,
 )
 
@@ -107,6 +109,14 @@ def _build_rewriter_messages(
     else:
         user_parts.append("# 上一版 plan\n\n（还没立 plan）")
 
+    # Include the unsummarized range, including turns completed while memory lagged.
+    covered = max((h.get("prefix", 0) for h in session.foundation_history
+                   if h.get("prefix", 0) <= len(session.messages)), default=0)
+    pending = session.messages[covered:]
+    if pending:
+        user_parts.append("# 尚未沉淀的对话（按时间排列）\n\n" + "\n\n".join(
+            ("人：" if m["role"] == "user" else "模型：") + m["content"] for m in pending))
+
     last_user = next(
         (m for m in reversed(session.messages) if m.get("role") == "user"),
         None,
@@ -123,7 +133,7 @@ def _build_rewriter_messages(
     else:
         user_parts.append(
             "# 本轮浮现的内容\n\n"
-            "（这一轮 thinker 选择整体沉默——通常意味着输入是空/纯标点/明显误操作。）"
+            "（没有额外传入本轮回复；请以上方尚未沉淀的完整对话为准，不推断为沉默。）"
         )
 
     user_parts.append(
@@ -226,8 +236,7 @@ async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
 
     except Exception as exc:
         log.warning("thinker call failed: %s", exc)
-        yield ("done", [])
-        return
+        raise
 
     if last_voice_idx >= 0 and voice_buf.strip():
         _ensure_voice_slot(last_voice_idx)
@@ -241,6 +250,8 @@ async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
         yield ("done", [])
         return
 
+    if not cleaned:
+        raise RuntimeError("模型没有返回可用的回复格式")
     yield ("done", cleaned)
 
 
@@ -249,7 +260,8 @@ async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
 async def _run_rewriter_to_session(
     session: Session,
     voices_this_turn: list[tuple[float, str]],
-) -> None:
+    *, persist: bool = True,
+) -> bool:
     """Run the rewriter LLM call, parse the four blocks, and persist them
     onto `session`. No SSE events — this runs in a background task that
     has no client connection to stream to.
@@ -279,7 +291,10 @@ async def _run_rewriter_to_session(
                 narrative_text += ev.content
     except Exception:
         log.warning("rewriter background call failed", exc_info=True)
-        return
+        return False
+
+    if not {"foundation", "narrative", "scratchpad"}.issubset(parser.seen_blocks):
+        return False
 
     new_foundation = foundation_text.strip()
     new_narrative = narrative_text.strip()
@@ -289,11 +304,11 @@ async def _run_rewriter_to_session(
     final_sense = dict(session.sense)
     final_sense.update(sense_values)
 
-    if new_foundation:
+    if "foundation" in parser.seen_blocks:
         session.foundation = new_foundation
-    if new_narrative:
+    if "narrative" in parser.seen_blocks:
         session.foundation_narrative = new_narrative
-    if new_scratchpad:
+    if "scratchpad" in parser.seen_blocks:
         session.scratchpad = new_scratchpad
     session.sense = final_sense
 
@@ -303,253 +318,165 @@ async def _run_rewriter_to_session(
     if parser.plan_seen:
         session.plan = parser.plan_buf.strip()
 
-    store.save(session)
-
-
-# --- background metabolize task ----------------------------------------
-
-async def _metabolize_turn(
-    session_id: str,
-    voices_this_turn: list[tuple[float, str]],
-) -> None:
-    """Detached background task — rewriter then judge, serialized via
-    per-session lock. Both halves soft-fail; UI degrades gracefully.
-
-    Imported lazily to avoid a circular import with routers.judge (which
-    can also live downstream of workshop in some test setups).
-    """
-    from routers.judge import run_judge_inline
-
-    lock = session_async_lock(session_id)
-    async with lock:
-        session = store.get(session_id)
-        if session is None:
-            return
-        try:
-            await _run_rewriter_to_session(session, voices_this_turn)
-        except Exception:
-            log.warning("metabolize: rewriter step failed", exc_info=True)
-        try:
-            await run_judge_inline(session)
-        except Exception:
-            log.warning("metabolize: judge step failed", exc_info=True)
-        # Snapshot the now-metabolized state so /api/chat/edit can roll
-        # back later. Keyed by current message-prefix so editing a prior
-        # user message can locate the right pre-state.
-        try:
-            session.push_snapshot()
-            store.save(session)
-        except Exception:
-            log.warning("metabolize: snapshot failed", exc_info=True)
-
-
-# --- main turn orchestrator ---------------------------------------------
-
-async def _stream_workshop(session: Session, user_text: str):
-    """Stream the thinker phase only. Spawn the metabolize task at the end
-    and close the SSE — the rest happens out of band.
-
-    If the client disconnects mid-stream (asyncio.CancelledError), persist
-    whatever partial voice content was already streamed under an
-    [INTERRUPTED] marker and skip metabolize entirely. Partial content is
-    by definition unsettled — letting it into the rewriter would dirty the
-    foundation. The next thinker call will see the [INTERRUPTED] message in
-    history and apply thinker.md's adaptive-thinking branch (continue /
-    refine / pivot, with a hard "don't suck up" constraint).
-    """
-    session.add_message("user", user_text)
-    session.turn += 1
-    store.save(session)
-    # Snapshot of state right after our user message was appended.
-    # Used as a race defense in the CancelledError handler: if the live
-    # state has been mutated below us (e.g. /api/chat/edit truncated to
-    # an earlier snapshot), our partial would land in the wrong place,
-    # so we abandon it. See cancellation block below.
-    initial_msg_count = len(session.messages)
-
-    voices_this_turn: list[tuple[float, str]] = []
-    # Mirror what _run_thinker accumulates internally, so we still have
-    # the partial state if cancelled before "done" fires. voice_ended
-    # tracks which voices closed cleanly — only the open ones get the
-    # [INTERRUPTED] marker on cancellation.
-    partial_voices: dict[int, str] = {}
-    partial_confs: dict[int, float] = {}
-    voice_ended: set[int] = set()
-
-    try:
-        async for item in _run_thinker(session):
-            tag = item[0]
-            if tag == "event":
-                ev = item[1]
-                etype = ev.get("type")
-                if etype == "voice_delta":
-                    i = ev.get("index", 0) or 0
-                    partial_voices[i] = partial_voices.get(i, "") + (ev.get("content") or "")
-                elif etype == "voice_conf":
-                    i = ev.get("index", 0) or 0
-                    c = ev.get("confidence", 0.5)
-                    partial_confs[i] = c if isinstance(c, (int, float)) else 0.5
-                elif etype == "voice_end":
-                    i = ev.get("index", 0) or 0
-                    voice_ended.add(i)
-                yield sse_event(ev)
-            elif tag == "done":
-                voices_this_turn = item[1]
-    except asyncio.CancelledError:
-        # Race defense: if /api/chat/edit truncated state below our user
-        # message (or appended past it) while we were yielding, our
-        # partial would land in the wrong place. Only proceed if the
-        # last message is still the user message we appended.
-        safe_to_save = (
-            len(session.messages) == initial_msg_count
-            and session.messages
-            and session.messages[-1].get("role") == "user"
-            and session.messages[-1].get("content") == user_text
-        )
-        if not safe_to_save:
-            raise
-        partial_parts = []
-        for i in sorted(partial_voices.keys()):
-            text = (partial_voices.get(i) or "").strip()
-            if not text:
-                continue
-            conf = partial_confs.get(i, 0.5)
-            marker = "" if i in voice_ended else "[INTERRUPTED]\n"
-            partial_parts.append(
-                f"[VOICE]\n[CONF]{conf:.2f}[/CONF]\n{marker}{text}\n[/VOICE]"
-            )
-        if partial_parts:
-            session.add_message("assistant", "\n\n".join(partial_parts))
-            store.save(session)
-        else:
-            # Cancelled before any voice content arrived — pop the orphan
-            # user message so we don't leave an unanswered prompt staring
-            # at the next turn. (Same logic as the silent-turn branch.)
-            session.messages.pop()
-            session.turn = max(0, session.turn - 1)
-            store.save(session)
-        raise
-
-    silent_turn = len(voices_this_turn) == 0
-
-    if silent_turn:
-        # Truly empty turn — pop the orphan user message so we don't leave
-        # an unanswered prompt in conversation history. No metabolize task.
-        if session.messages and session.messages[-1].get("role") == "user":
-            session.messages.pop()
-            session.turn = max(0, session.turn - 1)
+    if persist:
         store.save(session)
-        yield sse_event({
-            "type": "done",
-            "voices": [],
-            "voice_confs": [],
-            "silent": True,
-        })
+    return True
+
+
+# --- versioned background memory and foreground turns -------------------
+
+MEMORY_FIELDS = ("foundation", "foundation_narrative", "scratchpad", "sense", "plan")
+
+
+async def _metabolize_turn(session_id, voices_this_turn, messages=None, epoch=None):
+    rt = runtime_for(session_id)
+    epoch = rt.epoch if epoch is None else epoch
+    live = store.get(session_id)
+    if live is None:
         return
+    # Capture before waiting: a queued job must never borrow a later user's input.
+    frozen_messages = deepcopy(live.messages if messages is None else messages)
+    prefix = len(frozen_messages)
+    async with rt.memory_lock:
+        live = store.get(session_id)
+        if live is None or rt.epoch != epoch:
+            return
+        working = deepcopy(live)
+        working.messages = frozen_messages
+        working.foundation_history = [h for h in working.foundation_history if h["prefix"] <= prefix]
+        ok = await _run_rewriter_to_session(working, voices_this_turn, persist=False)
+        live = store.get(session_id)
+        if live is None or rt.epoch != epoch:
+            return
+        if not ok:
+            rt.memory_error = "共同记录暂未更新，对话已保存。"
+            return
+        for name in MEMORY_FIELDS:
+            setattr(live, name, deepcopy(getattr(working, name)))
+        live.push_snapshot(prefix=prefix)
+        rt.memory_error = ""
+        rt.memory_prefix = prefix
+        store.save(live)
+        # Optional atmosphere evaluation cannot hold up the next memory update.
+        if os.getenv("COTHINKER_JUDGE", "0") == "1":
+            spawn(_judge_snapshot(session_id, working, epoch, prefix), rt, epoch, memory=False)
 
-    # Save assistant message immediately so subsequent turns' thinker calls
-    # see this turn's voices in session.messages — even if metabolize is
-    # still running. Foundation snapshot is not stored on the message body
-    # anymore (it lives only on session.foundation, kept fresh by the
-    # background task). parseStoredVoices on the frontend reads only the
-    # [VOICE] blocks anyway.
-    parts = [
-        f"[VOICE]\n[CONF]{conf:.2f}[/CONF]\n{content}\n[/VOICE]"
-        for conf, content in voices_this_turn
-    ]
-    session.add_message("assistant", "\n\n".join(parts))
-    store.save(session)
 
-    # Detach the rewriter + judge from the request lifecycle. asyncio.create_task
-    # is enough — the task runs on the same event loop and survives the
-    # response generator returning. Per-session lock inside the task
-    # serializes against any future turn's metabolize.
-    asyncio.create_task(_metabolize_turn(session.id, voices_this_turn))
+async def _judge_snapshot(session_id, working, epoch, prefix):
+    from routers.judge import run_judge_inline
+    rt = runtime_for(session_id)
+    await run_judge_inline(working, persist=False)
+    live = store.get(session_id)
+    if live is None or rt.epoch != epoch or rt.memory_prefix != prefix:
+        return
+    for name in ("clarity", "drift", "seed"):
+        setattr(live, name, getattr(working, name))
+    live.push_snapshot(prefix=prefix)
+    store.save(live)
 
-    yield sse_event({
-        "type": "done",
-        "voices": [c for _, c in voices_this_turn],
-        "voice_confs": [conf for conf, _ in voices_this_turn],
-        "silent": False,
-    })
+
+def queue_memory(session, voices):
+    rt = runtime_for(session.id)
+    rt.memory_error = ""
+    return spawn(_metabolize_turn(session.id, voices, deepcopy(session.messages), rt.epoch), rt, rt.epoch)
+
+
+def _latest_user_msg_index(session):
+    return next((i for i in range(len(session.messages)-1, -1, -1)
+                 if session.messages[i].get("role") == "user"), None)
+
+
+async def _stream_workshop(session: Session, user_text: str, mode="send"):
+    rt = runtime_for(session.id)
+    # Serializes abort cleanup and the next turn, independently of memory jobs.
+    async with rt.foreground_lock:
+        if mode in ("edit", "retry"):
+            idx = _latest_user_msg_index(session)
+            if idx is not None:
+                if mode == "retry":
+                    user_text = session.messages[idx]["content"]
+                rt.epoch += 1
+                session.restore_to_prefix(idx)
+                session.turn = sum(m["role"] == "user" for m in session.messages)
+                rt.memory_error = ""
+        session.add_message("user", user_text)
+        session.turn += 1
+        store.save(session)
+        rt.generating = True
+        # The thinker also reads a frozen view; background updates cannot change
+        # the input partway through constructing a request.
+        working = deepcopy(session)
+        generation_epoch = rt.epoch
+        partial, confs, ended = {}, {}, set()
+        voices = []
+        try:
+            yield sse_event({"type": "turn_started", "turn": session.turn})
+            async for tag, value in _run_thinker(working):
+                if tag == "done":
+                    voices = value
+                    continue
+                ev = value
+                i = ev.get("index", 0) or 0
+                if ev["type"] == "voice_delta":
+                    partial[i] = partial.get(i, "") + ev.get("content", "")
+                elif ev["type"] == "voice_conf":
+                    confs[i] = ev["confidence"]
+                elif ev["type"] == "voice_end":
+                    ended.add(i)
+                yield sse_event(ev)
+        except asyncio.CancelledError:
+            if rt.epoch != generation_epoch:
+                raise
+            pieces = []
+            for i, text in sorted(partial.items()):
+                if text.strip():
+                    mark = "" if i in ended else "[INTERRUPTED]\n"
+                    pieces.append(f"[VOICE][CONF]{confs.get(i, .5):.2f}[/CONF]\n{mark}{text}[/VOICE]")
+            if pieces:
+                session.add_message("assistant", "\n\n".join(pieces))
+            # Keep the user's input even when cancellation happens before output.
+            store.save(session)
+            raise
+        except Exception:
+            log.warning("workshop response failed", exc_info=True)
+            yield sse_event({"type": "error", "detail": "暂时无法连接模型。你的输入已保存，可以重试。"})
+            return
+        finally:
+            rt.generating = False
+        if rt.epoch != generation_epoch:
+            return
+        if voices:
+            session.add_message("assistant", "\n\n".join(
+                f"[VOICE][CONF]{conf:.2f}[/CONF]\n{text}[/VOICE]" for conf, text in voices))
+            store.save(session)
+        queue_memory(session, voices)
+        yield sse_event({"type": "done", "voices": [t for _, t in voices],
+                         "voice_confs": [c for c, _ in voices], "silent": not voices})
+
+
+def stream_response(session, text, mode="send"):
+    return StreamingResponse(_stream_workshop(session, text, mode), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", SESSION_HEADER: session.id})
 
 
 @router.post("/workshop")
 async def stream_workshop(req: ChatRequest, session: Session = Depends(get_session)):
-    """Stream the thinker phase. Foundation/judge happen async; poll for them."""
-    return StreamingResponse(
-        _stream_workshop(session, req.content),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            SESSION_HEADER: session.id,
-        },
-    )
-
-
-# --- edit (replace latest user message) ---------------------------------
-
-def _latest_user_msg_index(session: Session) -> int | None:
-    """Find the index of the latest user message in session.messages,
-    or None if there isn't one."""
-    for i in range(len(session.messages) - 1, -1, -1):
-        if session.messages[i].get("role") == "user":
-            return i
-    return None
+    return stream_response(session, req.content)
 
 
 @router.post("/edit")
 async def stream_edit(req: ChatRequest, session: Session = Depends(get_session)):
-    """Edit the latest user message + re-run the turn.
+    return stream_response(session, req.content, "edit")
 
-    Replaces the latest user message in session.messages with `req.content`,
-    trims everything after it, restores the metabolized state from the
-    snapshot taken before that turn (foundation, sense, clarity, etc),
-    then streams a fresh thinker turn — same SSE shape as /api/chat/workshop.
 
-    The frontend is responsible for aborting any in-flight thinker stream
-    on the same session BEFORE calling this endpoint. We don't try to
-    cancel it server-side: the per-session metabolize lock would block
-    us, and racing two thinkers against the same session is a worse
-    failure mode than a brief client-side wait. See useEdit hook.
+@router.post("/retry")
+async def stream_retry(session: Session = Depends(get_session)):
+    return stream_response(session, "", "retry")
 
-    State surgery: this is the only path that can shrink session.messages
-    and undo a metabolize. It MUST hold the per-session lock so a stale
-    metabolize from the aborted turn doesn't race in and re-corrupt
-    state after we've rolled it back.
-    """
-    idx = _latest_user_msg_index(session)
-    if idx is None:
-        # No prior user message to edit — just treat as a normal turn.
-        return StreamingResponse(
-            _stream_workshop(session, req.content),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                SESSION_HEADER: session.id,
-            },
-        )
 
-    lock = session_async_lock(session.id)
-    async with lock:
-        # Re-fetch in case another path mutated it while we were waiting.
-        live = store.get(session.id) or session
-        live.restore_to_prefix(idx)
-        # `turn` tracks number of user-initiated rounds; restoring trims
-        # one of them off. push_snapshot will set the new turn's prefix
-        # when the new metabolize runs.
-        live.turn = max(0, live.turn - 1)
-        store.save(live)
-        session = live
-
-    return StreamingResponse(
-        _stream_workshop(session, req.content),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            SESSION_HEADER: session.id,
-        },
-    )
+@router.post("/memory/retry")
+async def retry_memory(session: Session = Depends(get_session)):
+    rt = runtime_for(session.id)
+    if not any(e == rt.epoch for e in rt.memory_jobs.values()) and session.messages:
+        queue_memory(session, [])
+    return memory_status(session)

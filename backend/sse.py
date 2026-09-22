@@ -179,6 +179,7 @@ class StreamParser:
     # at all" (leave existing plan untouched). Without this, an empty
     # buffer is ambiguous.
     plan_seen: bool = False
+    seen_blocks: set[str] = field(default_factory=set)
 
     # Voice index offset, so a parser can be told "voices in this stream
     # actually start at index N" — useful when one workshop turn aggregates
@@ -204,6 +205,9 @@ class StreamParser:
                         self.buf = self.buf[-MARKER_LOOKAHEAD:]
                     return
                 self.buf = self.buf[idx + len(marker):]
+                block_names = {FOUNDATION_OPEN: "foundation", FOUNDATION_NARRATIVE_OPEN: "narrative", SCRATCHPAD_OPEN: "scratchpad"}
+                if marker in block_names:
+                    self.seen_blocks.add(block_names[marker])
                 if marker == VOICE_OPEN:
                     self.state = "in_voice"
                     self.voice_count += 1

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from deps import get_session
 from store import Session, store
+from runtime import runtime_for, memory_status
 
 router = APIRouter(prefix="/api/chat", tags=["session"])
 
@@ -32,6 +33,7 @@ async def list_sessions():
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
+    runtime_for(session_id).epoch += 1
     store.drop(session_id)
     return {"ok": True}
 
@@ -47,6 +49,10 @@ async def get_foundation(session: Session = Depends(get_session)):
         "foundation": session.foundation,
         "foundation_narrative": session.foundation_narrative,
         "plan": session.plan,
+        "memory": memory_status(session),
+        "revision_count": len(session.foundation_history),
+        "focus": _note(session.scratchpad, "core_question"),
+        "open_questions": [v for v in (_note(session.scratchpad, "pending_conflict"), _note(session.scratchpad, "proposed_directions")) if v],
     }
 
 
@@ -69,6 +75,11 @@ async def get_clarity(session: Session = Depends(get_session)):
 
 @router.post("/reset")
 async def reset(session: Session = Depends(get_session)):
+    runtime_for(session.id).epoch += 1
     session.reset()
     store.save(session)
     return {"ok": True, "session_id": session.id}
+
+
+def _note(text, key):
+    return next((line.split(":", 1)[1].strip() for line in text.splitlines() if line.strip().startswith(key + ":")), "")

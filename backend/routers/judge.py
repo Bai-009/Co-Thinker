@@ -95,7 +95,7 @@ def _build_judge_user_payload(session: Session) -> str:
     return "\n\n".join(parts)
 
 
-async def run_judge_inline(session: Session) -> None:
+async def run_judge_inline(session: Session, *, persist: bool = True) -> None:
     """Non-streaming judge pass — runs the LLM, parses [CLARITY][DRIFT][SEED],
     and persists the results to `session`. Soft-fails (judge is decorative).
 
@@ -132,7 +132,8 @@ async def run_judge_inline(session: Session) -> None:
     session.clarity = clarity
     session.drift = drift
     session.seed = seed
-    store.save(session)
+    if persist:
+        store.save(session)
 
 
 async def _stream_judge(session: Session):
