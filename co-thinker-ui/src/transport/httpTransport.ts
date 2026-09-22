@@ -258,6 +258,18 @@ export class HttpTransport implements Transport {
     return `live-groundwork:${sid}`
   }
 
+  private titleKey(sid: string) {
+    return `live-title:${sid}`
+  }
+
+  /** 标题钉死：后端每轮把地基叙述的第一句当标题，会一直变；界面只认第一次拿到的那个。 */
+  private pinTitle(sid: string, fromServer: string): string {
+    const pinned = this.repository.read<string>(this.titleKey(sid), (v): v is string => typeof v === 'string' && v.length > 0)
+    if (pinned) return pinned
+    if (fromServer) this.repository.write(this.titleKey(sid), fromServer)
+    return fromServer
+  }
+
   private state(sid: string): Live {
     let s = this.live.get(sid)
     if (!s) {
@@ -335,9 +347,8 @@ export class HttpTransport implements Transport {
     ])
     s.messages = toMessages(sid, history.messages ?? [], s.messages)
     s.title =
-      rows.sessions.find((r) => r.id === sid)?.title ??
-      s.messages.find((m) => m.role === 'user')?.text.slice(0, 24) ??
-      ''
+      this.pinTitle(sid, rows.sessions.find((r) => r.id === sid)?.title ?? '') ||
+      (s.messages.find((m) => m.role === 'user')?.text.slice(0, 24) ?? '')
     s.groundwork = await this.groundworkFrom(s, foundation)
     this.reconcileHistory(s)
     return s
@@ -351,7 +362,7 @@ export class HttpTransport implements Transport {
       .filter((r) => r.message_count > 0)
       .map((r) => ({
         id: r.id,
-        title: r.title,
+        title: this.pinTitle(r.id, r.title),
         updatedAt: Math.round(r.updated_at * 1000),
         messageCount: r.message_count,
       }))
@@ -375,6 +386,7 @@ export class HttpTransport implements Transport {
     this.live.delete(id)
     this.watching.delete(id)
     this.repository.remove(this.historyKey(id))
+    this.repository.remove(this.titleKey(id))
   }
 
   async *submit(input: SubmitInput, signal: AbortSignal): AsyncIterable<ReplyEvent> {

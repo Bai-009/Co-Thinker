@@ -103,28 +103,29 @@ body::after {
 @keyframes ct-cursor { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
 
 /* 我的话：在右，一道墨线在说话的这一侧 */
-.ct-user-turn { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin: var(--space-8) 0 0; padding-bottom: var(--space-8); scroll-margin-block: var(--space-10); animation: ct-in 480ms var(--ease-out) both; }
+/* 对话：我的话是一个安静的气泡，回应是纸上的正文。没有装饰线。 */
+.ct-user-turn { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin: var(--space-4) 0 0; padding-bottom: 18px; scroll-margin-block: var(--space-10); animation: ct-in 480ms var(--ease-out) both; }
 .ct-user-turn:first-of-type { margin-top: 0; }
-.ct-user-text { max-width: min(72%, 100%); padding-right: var(--space-4); border-right: 1px solid var(--ink-soft); font-size: var(--text-body); line-height: 1.65; color: var(--ink-soft); text-align: left; overflow-wrap: anywhere; transition: border-color var(--dur-long) var(--ease-out), color var(--dur-long) var(--ease-out), opacity 900ms var(--ease-out); }
-.ct-user-text.is-editing { border-right-color: var(--ink-strong); color: var(--ink); }
+.ct-user-text { max-width: min(76%, 100%); padding: 10px 16px; border-radius: 18px; background: rgba(23, 24, 26, 0.05); font-size: 15px; line-height: 1.6; color: var(--ink); text-align: left; overflow-wrap: anywhere; transition: background var(--dur-long) var(--ease-out), box-shadow var(--dur-long) var(--ease-out), opacity 900ms var(--ease-out); }
+.ct-user-text.is-editing { background: var(--sheet); box-shadow: 0 0 0 1px var(--line-strong); }
 /* 地基还没覆盖到的话浅一层，落进去那一刻深回来——不用文字说「沉淀到这里」。 */
-.ct-user-turn.is-unsettled .ct-user-text { opacity: 0.62; }
+.ct-user-turn.is-unsettled .ct-user-text { opacity: 0.66; }
 .ct-assistant-turn.is-unsettled .ct-markdown { opacity: calc(var(--voice-opacity) * 0.66); }
 .ct-user-text p + p { margin-top: var(--space-2); }
 .ct-user-text blockquote { margin: 0 0 var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line-strong); font-size: var(--text-sm); color: var(--ink-faint); }
 .ct-message-reference > span { display: block; font-size: 10.5px; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 2px; }
-.ct-user-actions { position: absolute; right: 0; bottom: 2px; display: flex; align-items: baseline; gap: var(--space-4); height: 24px; font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
+.ct-user-actions { position: absolute; right: var(--space-2); bottom: -4px; display: flex; align-items: baseline; gap: var(--space-4); height: 24px; font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
 .ct-user-actions button { transition: color var(--dur-short) var(--ease-out); }
 .ct-user-actions button:hover { color: var(--ink-strong); }
 .ct-user-turn:hover .ct-user-actions, .ct-user-turn:focus-within .ct-user-actions { opacity: 1; }
 
 /* 回应：在左，左边的墨线粗细就是这一轮的把握 */
-.ct-assistant-turn { position: relative; margin: 0; padding-bottom: var(--space-8); scroll-margin-block: var(--space-10); animation: ct-in 480ms var(--ease-out) both; }
+.ct-assistant-turn { position: relative; margin: 0; padding-bottom: 28px; scroll-margin-block: var(--space-10); animation: ct-in 480ms var(--ease-out) both; }
 .ct-assistant-turn:last-of-type { padding-bottom: var(--space-10); }
-.ct-voice { --voice-stroke: 1px; --voice-opacity: 0.92; --voice-weight: 420; position: relative; padding-left: var(--space-4); border-left: var(--voice-stroke) solid var(--ink-soft); min-width: 0; transition: border-left-width var(--dur-long) var(--ease-out); }
-.ct-markdown { font-size: var(--text-reading); line-height: 1.72; color: var(--ink); font-weight: var(--voice-weight); opacity: var(--voice-opacity); overflow-wrap: anywhere; transition: opacity 900ms var(--ease-out); }
+.ct-voice { --voice-stroke: 1px; --voice-opacity: 0.92; --voice-weight: 420; position: relative; min-width: 0; }
+.ct-markdown { font-size: var(--text-reading); line-height: 1.78; color: var(--ink); font-weight: var(--voice-weight); opacity: var(--voice-opacity); overflow-wrap: anywhere; transition: opacity 900ms var(--ease-out); }
 .ct-markdown p + p { margin-top: var(--space-3); }
-.ct-markdown strong { font-weight: 600; color: var(--ink-strong); }
+.ct-markdown strong { font-weight: 500; color: var(--ink-strong); }
 .ct-markdown h1, .ct-markdown h2, .ct-markdown h3 { font: 500 1.02em/1.5 var(--ct-font); color: var(--ink-strong); margin: var(--space-4) 0 var(--space-2); }
 .ct-markdown ul, .ct-markdown ol { padding-left: var(--space-5); margin: var(--space-2) 0; }
 .ct-markdown blockquote { border-left: 1px solid var(--line-strong); margin: var(--space-2) 0; padding-left: var(--space-3); color: var(--ink-soft); }
@@ -133,16 +134,16 @@ body::after {
 .ct-markdown code { font-family: var(--ct-mono); font-size: 0.9em; }
 .ct-markdown table { display: block; max-width: 100%; overflow: auto; border-collapse: collapse; font-size: var(--text-ui); }
 .ct-markdown th, .ct-markdown td { padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--line); }
-.ct-voice-actions { position: absolute; left: var(--space-4); bottom: 2px; display: flex; align-items: baseline; gap: var(--space-4); height: 24px; font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
-.ct-assistant-turn:hover .ct-voice-actions, .ct-assistant-turn:focus-within .ct-voice-actions, .ct-assistant-turn:last-of-type .ct-voice-actions { opacity: 1; }
+.ct-voice-actions { position: absolute; left: 0; bottom: 2px; display: flex; align-items: baseline; gap: var(--space-4); height: 24px; font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
+.ct-assistant-turn:hover .ct-voice-actions, .ct-assistant-turn:focus-within .ct-voice-actions { opacity: 1; }
 .ct-voice-actions button { transition: color var(--dur-short) var(--ease-out); }
 .ct-voice-actions button:hover { color: var(--ink-strong); }
-.ct-turn-status { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-sm); margin-top: var(--space-2); padding-left: var(--space-4); }
+.ct-turn-status { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-sm); margin-top: var(--space-2); }
 .ct-turn-error, .ct-alert { font-size: var(--text-ui); color: var(--ct-error); padding: var(--space-2) var(--space-3); border-left: 1px solid rgba(160, 52, 42, 0.4); background: rgba(160, 52, 42, 0.05); }
 .ct-turn-error { margin-top: var(--space-2); }
 .ct-turn-error button, .ct-alert button { text-decoration: underline; text-underline-offset: 3px; margin-left: var(--space-3); }
 .ct-alert { margin: 0 var(--space-8); }
-.ct-thinking { display: flex; gap: 6px; padding: 6px 0 6px var(--space-4); align-items: center; height: 26px; }
+.ct-thinking { display: flex; gap: 6px; padding: 6px 0; align-items: center; height: 26px; }
 .ct-thinking > span:not(.ct-sr-only) { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-soft); opacity: 0.25; animation: ct-breathe 2.4s ease-in-out infinite; }
 .ct-thinking > span:nth-child(2) { animation-delay: 0.5s; }
 .ct-thinking > span:nth-child(3) { animation-delay: 1s; }
@@ -150,8 +151,8 @@ body::after {
 .is-highlighted { background: var(--ct-highlight); box-shadow: 0 0 0 8px var(--ct-highlight); border-radius: 2px; }
 
 /* 沉淀：一轮之后地基定了什么；地基覆盖到的位置 */
-.ct-settled { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--space-3); margin: var(--space-3) 0 var(--space-6); padding-left: calc(var(--space-4) + 1px); font-size: var(--text-xs); line-height: 1.8; color: var(--ink-faint); }
-.ct-assistant-turn > .ct-settled { margin: var(--space-3) 0 0; }
+.ct-settled { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--space-3); margin: var(--space-3) 0 var(--space-6); padding-left: 1px; font-size: var(--text-xs); line-height: 1.8; color: var(--ink-faint); }
+.ct-assistant-turn > .ct-settled { margin: 10px 0 0; }
 .ct-settled-label { font-size: 10.5px; font-weight: 500; letter-spacing: 0.14em; color: var(--ink-soft); flex: none; }
 .ct-settled > span:not(.ct-settled-label) { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); }
 .ct-settled button { color: var(--ink-soft); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; text-underline-offset: 3px; transition: color var(--dur-short) var(--ease-out), opacity var(--dur-short) var(--ease-out); }
@@ -322,25 +323,23 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-nav-dialog.is-closing { animation: ct-drawer-out 220ms var(--ease-in-out) forwards; }
 .ct-nav-dialog > .ct-dialog-head { padding: 18px 22px 8px; border-bottom: 0; }
 .ct-nav-dialog > .ct-dialog-head h2 { font-size: 11px; letter-spacing: 0.14em; color: var(--ink-soft); }
-.ct-sidebar { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 12px 22px 14px; }
-.ct-nav-group { display: flex; flex-direction: column; gap: 1px; margin-top: 18px; }
-.ct-nav-group:first-child { margin-top: 2px; }
-.ct-nav-group > h3 { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; color: var(--ink-faint); padding: 0 8px 6px 11px; }
-.ct-new { align-self: flex-start; margin: 4px 8px 18px; padding: 4px 0 6px; position: relative; font-family: var(--ct-display); font-size: 14px; letter-spacing: 0.01em; color: var(--ink-soft); display: inline-flex; align-items: baseline; gap: 8px; transition: color var(--dur-short) var(--ease-out); }
-.ct-new::after { content: ''; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px; background: currentColor; opacity: 0; transform: scaleX(0.4); transform-origin: left; transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
-.ct-new:hover { color: var(--ink-strong); }
-.ct-new:hover::after { opacity: 0.45; transform: scaleX(1); }
-.ct-new-plus { font-size: 16px; line-height: 1; opacity: 0.55; position: relative; top: -1px; }
+/* 对话列表：单行标题，圆角选中，没有边线和计数。和 ChatGPT / Claude 一样安静。 */
+.ct-sidebar { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 14px 22px; }
+.ct-nav-group { display: flex; flex-direction: column; gap: 2px; margin-top: 18px; }
+.ct-nav-group:first-child { margin-top: 4px; }
+.ct-nav-group > h3 { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; color: var(--ink-faint); padding: 0 10px 6px; }
+.ct-new { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0 14px; padding: 8px 10px; border-radius: 8px; font-size: 14px; color: var(--ink); transition: background var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.ct-new:hover { background: var(--ct-hover); color: var(--ink-strong); }
+.ct-new svg { width: 16px; height: 16px; color: var(--ink-soft); }
 .ct-conversations { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
-.ct-conversation { position: relative; display: flex; align-items: center; gap: 2px; padding-left: 10px; border-left: 1px solid transparent; transition: border-left-color var(--dur-long) var(--ease-out), background var(--dur-long) var(--ease-out); animation: ct-in 540ms var(--ease-out) both; }
+.ct-conversation { position: relative; display: flex; align-items: center; border-radius: 8px; transition: background var(--dur-short) var(--ease-out); animation: ct-in 540ms var(--ease-out) both; }
 .ct-conversation:hover { background: var(--ct-hover); }
-.ct-conversation.is-current { border-left-color: var(--ink-strong); background: var(--ct-wash); }
-.ct-conversation-select { min-width: 0; flex: 1; text-align: left; padding: 8px 6px; }
-.ct-conversation-select > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-ui); color: var(--ink-soft); transition: color var(--dur-short) var(--ease-out); }
+.ct-conversation.is-current { background: rgba(23, 24, 26, 0.06); }
+.ct-conversation-select { min-width: 0; flex: 1; text-align: left; padding: 8px 10px; }
+.ct-conversation-select > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; line-height: 1.5; color: var(--ink-soft); transition: color var(--dur-short) var(--ease-out); }
 .ct-conversation:hover .ct-conversation-select > span { color: var(--ink); }
-.ct-conversation.is-current .ct-conversation-select > span { color: var(--ink-strong); font-weight: 500; }
-.ct-conversation-select > small { display: block; font-size: var(--text-xs); color: var(--ink-faint); }
-.ct-conversation > .ct-icon { width: 24px; height: 24px; opacity: 0; margin-right: 6px; color: var(--ink-faint); }
+.ct-conversation.is-current .ct-conversation-select > span { color: var(--ink-strong); }
+.ct-conversation > .ct-icon { width: 24px; height: 24px; opacity: 0; margin-right: 4px; color: var(--ink-faint); }
 .ct-conversation > .ct-icon svg { width: 15px; height: 15px; }
 .ct-conversation > .ct-icon:hover { color: var(--ct-error); background: rgba(160, 52, 42, 0.06); }
 .ct-conversation:hover > .ct-icon, .ct-conversation:focus-within > .ct-icon { opacity: 1; }

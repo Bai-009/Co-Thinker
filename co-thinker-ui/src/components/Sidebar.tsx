@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import { IconButton } from './Dialog'
 import type { SessionSummary } from '../domain/types'
 
@@ -44,10 +45,8 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
   const groups = groupSessions(sessions)
   return (
     <div className="ct-sidebar">
-      <button type="button" className="ct-new" onClick={onNew} title="开始一段新的对话">
-        <span className="ct-new-plus" aria-hidden="true">
-          +
-        </span>
+      <button type="button" className="ct-new" onClick={onNew}>
+        <Icon name="plus" />
         <span>新建对话</span>
       </button>
 
@@ -64,7 +63,6 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
                   onClick={() => onSelect(s.id)}
                 >
                   <span>{s.title}</span>
-                  <small>{s.messageCount} 句</small>
                 </button>
                 <IconButton name="trash" label={`删除「${s.title}」`} onClick={() => onDelete(s.id)} />
               </div>
