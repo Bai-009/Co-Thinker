@@ -57,8 +57,8 @@ body::after {
 /* 网格：左边可以有一栏对话列表（整高），右边可以有一张地基；顶栏只跨中间和右边 */
 .ct-app { height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 80px minmax(0, 1fr); grid-template-areas: "head" "main"; color: var(--ink); max-width: 1680px; margin: auto; }
 .ct-app.has-records { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "head head" "main records"; }
-.ct-app.has-nav { grid-template-columns: 264px minmax(0, 1fr); grid-template-areas: "nav head" "nav main"; }
-.ct-app.has-nav.has-records { grid-template-columns: 264px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "nav head head" "nav main records"; }
+.ct-app.has-nav { grid-template-columns: 280px minmax(0, 1fr); grid-template-areas: "nav head" "nav main"; }
+.ct-app.has-nav.has-records { grid-template-columns: 280px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "nav head head" "nav main records"; }
 .ct-app h1, .ct-app h2, .ct-app h3, .ct-app p { margin: 0; }
 /* 复位用 :where 压低优先级，组件自己的 padding / border 才写得进去 */
 :where(.ct-app, .ct-dialog) button, :where(.ct-app, .ct-dialog) textarea { font: inherit; color: inherit; }
@@ -75,12 +75,13 @@ body::after {
 .ct-masthead { grid-area: head; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-8); gap: var(--space-4); }
 .ct-masthead-brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .ct-masthead-brand > .ct-icon { margin-left: -8px; }
+.ct-masthead-brand > .ct-icon + .ct-icon { margin-left: -10px; }
 .ct-brand-block { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ct-brand-name { font-family: var(--ct-display); font-size: 22px; font-weight: 500; line-height: 1.2; color: var(--ink-strong); }
-.ct-brand-sub { font-family: var(--ct-display); font-size: 12.5px; font-style: italic; line-height: 1.4; letter-spacing: 0.01em; color: var(--ink-soft); white-space: nowrap; }
+.ct-brand-sub { font-family: var(--ct-display); font-size: 12px; font-style: italic; line-height: 1.4; letter-spacing: 0.01em; color: var(--ink-soft); white-space: nowrap; }
 .ct-icon { width: 30px; height: 30px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: var(--radius-sm); color: var(--ink-faint); transition: color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out); }
 .ct-icon:hover { color: var(--ink-strong); background: var(--ct-hover); }
-.ct-masthead-tools { display: flex; align-items: baseline; gap: var(--space-6); }
+.ct-masthead-tools { display: flex; align-items: baseline; gap: var(--space-6); margin-left: auto; }
 .ct-masthead-note { font-family: var(--ct-display); font-size: var(--text-ui); color: var(--ink-faint); letter-spacing: 0.02em; white-space: nowrap; }
 .ct-toolbar-button { position: relative; font-family: var(--ct-display); font-size: var(--text-ui); letter-spacing: 0.02em; white-space: nowrap; color: var(--ink-soft); padding: 2px 0 4px; transition: color var(--dur-short) var(--ease-out); }
 .ct-toolbar-button::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: currentColor; opacity: 0; transform: scaleX(0.5); transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
@@ -269,7 +270,8 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 
 /* 对话列表：一本日记的目录。宽屏是贴着左边、整高的一栏；窄屏是从左边推出来的抽屉，不是卡片。 */
 .ct-nav { grid-area: nav; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: rgba(23, 24, 26, 0.025); animation: ct-in 360ms var(--ease-out) both; }
-.ct-nav-head { flex: none; height: 80px; display: flex; align-items: center; padding-left: 24px; }
+.ct-nav-head { flex: none; height: 80px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 0 24px; }
+.ct-nav-head > .ct-brand-block { min-width: 0; overflow: hidden; }
 .ct-nav > .ct-sidebar { padding-top: 2px; }
 .ct-nav-dialog { margin: 0; inset-inline-start: 0; height: 100dvh; max-height: 100dvh; width: min(300px, 86vw); border: 0; border-right: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); }
 .ct-nav-dialog[open] { animation: ct-drawer-in 320ms var(--ease-out); }

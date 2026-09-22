@@ -138,6 +138,13 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       onClick={toggleNav}
     />
   )
+  // 名字和一句话跟着边栏走：展开时在边栏头部，收起时才回到顶栏。
+  const brand = (
+    <div className="ct-brand-block">
+      <span className="ct-brand-name">Co-Thinker</span>
+      <span className="ct-brand-sub">we can know more than we can tell</span>
+    </div>
+  )
 
   return (
     <div
@@ -145,23 +152,23 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     >
       {showNav && (
         <aside className="ct-nav">
-          <div className="ct-nav-head">{navToggle}</div>
+          <div className="ct-nav-head">
+            {brand}
+            {navToggle}
+          </div>
           {sidebar}
         </aside>
       )}
       <header className="ct-masthead">
-        <div className="ct-masthead-brand">
-          {!showNav && navToggle}
-          <div className="ct-brand-block">
-            <span className="ct-brand-name">Co-Thinker</span>
-            <span className="ct-brand-sub">we can know more than we can tell</span>
+        {!showNav && (
+          <div className="ct-masthead-brand">
+            {navToggle}
+            {!blank && <IconButton name="plus" label="新建对话" onClick={() => void actions.newSession()} />}
+            {brand}
           </div>
-        </div>
+        )}
         <div className="ct-masthead-tools">
           {preview && <span className="ct-masthead-note">示例 · 未连接模型</span>}
-          <button type="button" className="ct-toolbar-button" onClick={() => void actions.newSession()}>
-            新建对话
-          </button>
           <button
             type="button"
             className={`ct-toolbar-button${showRecords ? ' is-selected' : ''}`}
