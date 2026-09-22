@@ -145,7 +145,7 @@ cd co-thinker-ui && npm install && npm run dev      # http://127.0.0.1:5180
 ```
 
 - 默认是**示例模式**：独立的模拟传输层，不连模型；顶栏有「示例 · 未连接模型」。打的字正好是脚本里的那句才推进，其他输入得到诚实的提示。
-- **实测**：先按上面的步骤起后端（`.env` 里填 `DEEPSEEK_API_KEY`），再打开 `http://127.0.0.1:5180/?live`（或在 `co-thinker-ui/.env.local` 写 `VITE_TRANSPORT=live`）。Vite 把 `/api` 代理到 8000，SSE 也走这里。
+- **实测**：先按上面的步骤起后端（`.env` 里填 `DEEPSEEK_API_KEY`），再打开 `http://127.0.0.1:5180/?live`（或在 `co-thinker-ui/.env.local` 写 `VITE_TRANSPORT=live`）。Vite 把 `/api` 代理到后端，端口跟根目录 `.env` 的 `PORT` 走（默认 8000），SSE 也走这里。
 - 真实传输层在 `src/transport/httpTransport.ts`：服务端只有消息正文、地基正文和记忆状态；id / sequence / version（正文指纹）和按轮的地基历史在客户端补出来，界面对示例与真实一视同仁。
 - `npm test`（Vitest）、`npm run typecheck`。
 
