@@ -359,7 +359,11 @@ async def _run_rewriter_to_session(
             problems = check_ratchet(session.foundation, foundation_text.strip())
             reason = describe_for_model(problems) if problems else ""
         if reason:
-            log.warning("rewriter output rejected (attempt %d): %s", attempt + 1, reason.splitlines()[0][:80])
+            # 把被拒的原文留在日志里（截断），不然没法知道模型到底写了什么。
+            log.warning(
+                "rewriter output rejected (attempt %d): %s | raw %d chars: %s",
+                attempt + 1, reason.splitlines()[0][:80], len(raw), raw.replace("\n", "⏎")[:600],
+            )
             if attempt >= REWRITER_RETRIES:
                 return False
             feedback = [{"role": "assistant", "content": raw}, {"role": "user", "content": reason}]
