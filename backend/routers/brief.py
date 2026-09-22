@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from deps import SESSION_HEADER, get_session
-from llm import chat_completion_stream
+from llm import call_options, chat_completion_stream
 from sse import sse_event
 from store import Session, get_brief_system_prompt
 
@@ -86,7 +86,7 @@ async def _stream_brief(session: Session):
 
     full = ""
     try:
-        async for chunk in chat_completion_stream(messages):
+        async for chunk in chat_completion_stream(messages, **call_options("brief")):
             if not chunk:
                 continue
             full += chunk

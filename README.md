@@ -163,7 +163,15 @@ docker-compose.yml          Backend + nginx-served frontend
 |---|---|---|
 | `DEEPSEEK_API_KEY` | *(required)* | DeepSeek API key |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Any OpenAI-compatible endpoint |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | |
+| `DEEPSEEK_REASONER_MODEL` | `deepseek-v4-pro` | Judge only |
+| `COTHINKER_<ROLE>_THINKING` | thinker `0`, others `1` | DeepSeek thinking mode per role (THINKER / REWRITER / BRIEF / JUDGE); while on, `temperature` is ignored |
+| `COTHINKER_<ROLE>_EFFORT` | `high` | `low` / `high` / `max`, thinking only |
+| `COTHINKER_<ROLE>_TEMPERATURE` | model default `1.0` | Non-thinking only |
+| `COTHINKER_THINKER_RETRIES` | `1` | Silent retry when the thinker fails before any output |
+| `COTHINKER_REWRITER_RETRIES` | `2` | Re-ask the rewriter with the ratchet violations, then keep the old 地基 |
+| `COTHINKER_CONTEXT_LAYOUT` | `tail` | `tail`: static prompt → history → state before the newest message; `head`: state inside the system prompt |
+| `COTHINKER_JUDGE` | `0` | Run the judge after each memory update |
 | `COTHINKER_DB` | *(unset → in-memory)* | Path to SQLite DB; `:memory:` for ephemeral; `../cothinker.db` recommended for local dev (lands at project root) |
 | `ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated CORS allowlist |
 | `PORT` | `8000` | |

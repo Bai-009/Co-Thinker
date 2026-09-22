@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from deps import SESSION_HEADER, get_session
-from llm import chat_completion_stream, get_reasoner_model
+from llm import call_options, chat_completion_stream, get_reasoner_model
 from sse import (
     StreamParser,
     parse_clamped_float,
@@ -116,7 +116,7 @@ async def run_judge_inline(session: Session, *, persist: bool = True) -> None:
     # latency vs thinker's IM rhythm is acceptable here because the
     # frontend polls /api/chat/clarity rather than blocking on a stream.
     try:
-        async for chunk in chat_completion_stream(messages, model=get_reasoner_model()):
+        async for chunk in chat_completion_stream(messages, model=get_reasoner_model(), **call_options("judge")):
             for _ in parser.feed(chunk):
                 pass
         for _ in parser.flush():
@@ -149,7 +149,7 @@ async def _stream_judge(session: Session):
     # Same as run_judge_inline — escalate to the reasoning model since
     # judge is元认知, not interactive浮现.
     try:
-        async for chunk in chat_completion_stream(messages, model=get_reasoner_model()):
+        async for chunk in chat_completion_stream(messages, model=get_reasoner_model(), **call_options("judge")):
             for ev in parser.feed(chunk):
                 # The judge only emits clarity/drift/seed (and we only
                 # surface them on block_end).
