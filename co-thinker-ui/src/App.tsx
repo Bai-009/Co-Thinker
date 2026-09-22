@@ -149,7 +149,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     <Records
       groundwork={state.groundwork}
       updating={state.memory.state === 'updating'}
-      onClose={() => setRecordOpen(false)}
+      onClose={wide ? undefined : () => setRecordOpen(false)}
       onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
       onLocate={requestLocate}
       sourceExists={(id) => state.messages.some((m) => m.id === id)}

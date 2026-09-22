@@ -5,7 +5,8 @@ import type { Groundwork } from '../domain/types'
 interface Props {
   groundwork: Groundwork | null
   updating: boolean
-  onClose: () => void
+  /** 只有窄屏的那层需要自己的关闭；宽屏并排时由顶栏的「地基」收放。 */
+  onClose?: () => void
   onQuoteClaim: (text: string) => void
   onLocate: (messageId: string) => void
   sourceExists: (messageId: string) => boolean
@@ -42,7 +43,7 @@ export function Records(props: Props) {
           <span className={`ct-status-dot${updating ? ' is-updating' : ''}`} aria-hidden="true" />
           地基
         </h2>
-        <IconButton name="close" label="收起地基" onClick={onClose} />
+        {onClose && <IconButton name="close" label="收起地基" onClick={onClose} />}
       </div>
 
       <div className="ct-records-scroll" ref={scroll}>
