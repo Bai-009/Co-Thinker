@@ -192,10 +192,22 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           </div>
         )}
 
-        {s.notice && (
+        {(s.notice || state.error) && (
+          // 请求级的失败：网络断了（notice）或这一轮没生成出来（state.error）。
           <div className="ct-alert" role="alert">
-            {s.notice}
-            <button type="button" onClick={s.dismissNotice}>
+            {s.notice ?? state.error}
+            {state.error && !s.busy && (
+              <button type="button" onClick={() => void actions.retryTurn()}>
+                重试这一轮
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                s.dismissNotice()
+                s.dismissError()
+              }}
+            >
               知道了
             </button>
           </div>

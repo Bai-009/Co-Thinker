@@ -361,6 +361,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
     briefRelation,
     notice,
     dismissNotice: () => setNotice(null),
+    dismissError: () => dispatch({ type: 'error/cleared' }),
     busy,
     uncovered: uncoveredMessages(state),
     revisable: revisableMessage(state),
