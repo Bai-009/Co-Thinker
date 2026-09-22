@@ -94,7 +94,9 @@ body::after {
 .ct-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px); mask-image: linear-gradient(to bottom, transparent, #000 20px); }
 .ct-scroll::-webkit-scrollbar { width: 0; }
 .ct-thread { width: min(100%, 744px); padding: var(--space-6) var(--space-8) var(--space-5); margin: 0 auto; }
-.ct-running-head { width: min(100%, 744px); flex: none; margin: 0 auto; padding: var(--space-3) var(--space-8) 0; font-family: var(--ct-display); font-size: var(--text-body); color: var(--ink-soft); letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 这次思考的标题住在顶栏，像一页的页眉；不浮在对话上方。 */
+.ct-masthead-title { min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--ct-display); font-size: 15px; font-weight: 400; letter-spacing: 0.01em; color: var(--ink-soft); animation: ct-in 320ms var(--ease-out) both; }
+.ct-masthead-brand + .ct-masthead-title { margin-left: var(--space-6); padding-left: var(--space-6); box-shadow: inset 1px 0 var(--line-strong); }
 
 @keyframes ct-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ct-breathe { 0%, 100% { opacity: 0.18; transform: scale(0.96); } 50% { opacity: 0.55; transform: scale(1.04); } }
@@ -357,11 +359,11 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
   .ct-masthead-brand > .ct-icon { margin-left: -6px; }
   .ct-brand-name { font-size: 19px; }
   .ct-brand-sub { display: none; }
+  .ct-masthead-title { display: none; }
   .ct-masthead-tools { gap: var(--space-4); }
   .ct-masthead-note { display: none; }
   .ct-toolbar-button { font-size: var(--text-sm); }
   .ct-thread { padding: var(--space-5) var(--space-5) var(--space-3); }
-  .ct-running-head { padding: var(--space-2) var(--space-5) 0; }
   .ct-user-text { max-width: 88%; }
   .ct-compose-area { padding: var(--space-2) var(--space-4) var(--space-3); }
   .ct-composer textarea { font-size: 16px; }

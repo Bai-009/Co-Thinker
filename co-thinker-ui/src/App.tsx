@@ -225,6 +225,11 @@ export default function App({ transport }: { transport?: Transport } = {}) {
             {brand}
           </div>
         )}
+        {hasMessages && (
+          <h1 className="ct-masthead-title" title={title}>
+            {title}
+          </h1>
+        )}
         <div className="ct-masthead-tools">
           {preview && <span className="ct-masthead-note">示例 · 未连接模型</span>}
           <button
@@ -251,12 +256,6 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       </header>
 
       <main className="ct-main" ref={mainRef}>
-        {hasMessages && (
-          <div className="ct-running-head" title={title}>
-            {title}
-          </div>
-        )}
-
         {(s.notice || state.error) && (
           // 请求级的失败：网络断了（notice）或这一轮没生成出来（state.error）。
           <div className="ct-alert" role="alert">
