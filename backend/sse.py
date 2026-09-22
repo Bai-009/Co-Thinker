@@ -19,6 +19,8 @@ splits the workshop turn into multiple sequential LLM calls:
 
 Markers may be split across SSE chunks, so the parser keeps a lookahead
 tail and only emits content that's safely past any partial marker prefix.
+A background block whose close marker is missing ends where the next
+block's opener begins (see `BLOCK_OPENERS`); [VOICE]/[CONF] are not lenient.
 [CONF] is *nested* inside [VOICE]; [SILENCE] is a self-closing token.
 """
 
@@ -76,6 +78,39 @@ ALL_MARKERS = (
     SEED_OPEN, SEED_CLOSE,
 )
 MARKER_LOOKAHEAD = max(len(m) for m in ALL_MARKERS)
+
+# 后台各块的状态表：状态 → (收尾标记, 块名, 累积到哪个缓冲；None 表示按增量事件吐出)。
+_BLOCK_STATES = {
+    "in_foundation": (FOUNDATION_CLOSE, "foundation", None),
+    "in_narrative": (FOUNDATION_NARRATIVE_CLOSE, "narrative", None),
+    "in_change": (FOUNDATION_CHANGE_CLOSE, "foundation_change", "change_buf"),
+    "in_scratchpad": (SCRATCHPAD_CLOSE, "scratchpad", "scratchpad_buf"),
+    "in_sense": (SENSE_CLOSE, "sense", "sense_buf"),
+    "in_plan": (PLAN_CLOSE, "plan", "plan_buf"),
+    "in_clarity": (CLARITY_CLOSE, "clarity", "clarity_buf"),
+    "in_drift": (DRIFT_CLOSE, "drift", "drift_buf"),
+    "in_seed": (SEED_CLOSE, "seed", "seed_buf"),
+}
+_OPEN_OF = {
+    "foundation": FOUNDATION_OPEN,
+    "narrative": FOUNDATION_NARRATIVE_OPEN,
+    "foundation_change": FOUNDATION_CHANGE_OPEN,
+    "scratchpad": SCRATCHPAD_OPEN,
+    "sense": SENSE_OPEN,
+    "plan": PLAN_OPEN,
+    "clarity": CLARITY_OPEN,
+    "drift": DRIFT_OPEN,
+    "seed": SEED_OPEN,
+}
+_OPENERS = tuple(_OPEN_OF.values())
+
+# 后台和裁判的块，模型偶尔会漏写收尾标记。读到另一块的开头，就当这一块已经写完，
+# 否则后面的块会整段被算进这一块，整轮被判成缺块。前台的 [VOICE]/[CONF] 不走这条。
+BLOCK_OPENERS = (
+    FOUNDATION_OPEN, FOUNDATION_CHANGE_OPEN, FOUNDATION_NARRATIVE_OPEN,
+    SCRATCHPAD_OPEN, SENSE_OPEN, PLAN_OPEN,
+    CLARITY_OPEN, DRIFT_OPEN, SEED_OPEN,
+)
 
 
 def find_first(buf: str, *markers: str) -> tuple[int, str | None]:
@@ -189,6 +224,32 @@ class StreamParser:
     def _voice_idx(self) -> int:
         return self.voice_offset + self.voice_count - 1
 
+    def _block_end(self, close: str) -> tuple[int, int]:
+        """这一块在哪里结束，返回 (位置, 要吃掉的长度)。
+
+        正常是收尾标记，连标记一起吃掉。漏了收尾标记时，另一块的开头也算结束，
+        但开头留在缓冲里，交给 preamble 去认。都没找到返回 (-1, 0)。
+        """
+        own = "[" + close[2:]
+        idx, marker = find_first(self.buf, close, *(m for m in BLOCK_OPENERS if m != own))
+        if idx < 0:
+            return -1, 0
+        return idx, (len(close) if marker == close else 0)
+
+    def _emit(self, block: str, buf_attr: str | None, content: str) -> Iterator[ParsedEvent]:
+        """一段块内文字：清单和散文按增量事件吐出，其余块累积到自己的缓冲。"""
+        if not content:
+            return
+        if buf_attr is None:
+            yield ParsedEvent(kind="block_delta", block=block, content=content)
+        else:
+            setattr(self, buf_attr, getattr(self, buf_attr) + content)
+
+    def _end_block(self, block: str, buf_attr: str | None, content: str) -> Iterator[ParsedEvent]:
+        yield from self._emit(block, buf_attr, content)
+        if buf_attr is None:
+            yield ParsedEvent(kind="block_end", block=block)
+
     def feed(self, chunk: str) -> Iterator[ParsedEvent]:
         self.buf += chunk
         while True:
@@ -284,135 +345,29 @@ class StreamParser:
                     self.buf = self.buf[safe:]
                 return
 
-            if self.state == "in_foundation":
-                idx = self.buf.find(FOUNDATION_CLOSE)
-                if idx >= 0:
-                    if idx > 0:
-                        yield ParsedEvent(
-                            kind="block_delta", block="foundation", content=self.buf[:idx],
-                        )
-                    self.buf = self.buf[idx + len(FOUNDATION_CLOSE):]
-                    yield ParsedEvent(kind="block_end", block="foundation")
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    yield ParsedEvent(
-                        kind="block_delta", block="foundation", content=self.buf[:safe],
-                    )
-                    self.buf = self.buf[safe:]
+            spec = _BLOCK_STATES.get(self.state)
+            if spec is None:
                 return
-
-            if self.state == "in_narrative":
-                idx = self.buf.find(FOUNDATION_NARRATIVE_CLOSE)
-                if idx >= 0:
-                    if idx > 0:
-                        yield ParsedEvent(
-                            kind="block_delta", block="narrative", content=self.buf[:idx],
-                        )
-                    self.buf = self.buf[idx + len(FOUNDATION_NARRATIVE_CLOSE):]
-                    yield ParsedEvent(kind="block_end", block="narrative")
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    yield ParsedEvent(
-                        kind="block_delta", block="narrative", content=self.buf[:safe],
-                    )
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_change":
-                idx = self.buf.find(FOUNDATION_CHANGE_CLOSE)
-                if idx >= 0:
-                    self.change_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(FOUNDATION_CHANGE_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.change_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_scratchpad":
-                idx = self.buf.find(SCRATCHPAD_CLOSE)
-                if idx >= 0:
-                    self.scratchpad_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(SCRATCHPAD_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.scratchpad_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_sense":
-                idx = self.buf.find(SENSE_CLOSE)
-                if idx >= 0:
-                    self.sense_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(SENSE_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.sense_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_plan":
-                idx = self.buf.find(PLAN_CLOSE)
-                if idx >= 0:
-                    self.plan_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(PLAN_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.plan_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_clarity":
-                idx = self.buf.find(CLARITY_CLOSE)
-                if idx >= 0:
-                    self.clarity_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(CLARITY_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.clarity_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_drift":
-                idx = self.buf.find(DRIFT_CLOSE)
-                if idx >= 0:
-                    self.drift_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(DRIFT_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.drift_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
-            if self.state == "in_seed":
-                idx = self.buf.find(SEED_CLOSE)
-                if idx >= 0:
-                    self.seed_buf += self.buf[:idx]
-                    self.buf = self.buf[idx + len(SEED_CLOSE):]
-                    self.state = "preamble"
-                    continue
-                safe = len(self.buf) - MARKER_LOOKAHEAD
-                if safe > 0:
-                    self.seed_buf += self.buf[:safe]
-                    self.buf = self.buf[safe:]
-                return
-
+            close, block, buf_attr = spec
+            idx_close = self.buf.find(close)
+            # 收尾标记还没来，下一块的开头先到了：当作这一块到此结束。
+            # 模型偶尔漏写收尾标记（尤其是 [/FOUNDATION_NARRATIVE]），不宽容的话
+            # 后面的清单和 scratchpad 会整个被吞进散文里，校验就会说缺块。
+            idx_open, _ = find_first(self.buf, *(m for m in _OPENERS if m != _OPEN_OF[block]))
+            if idx_open >= 0 and (idx_close < 0 or idx_open < idx_close):
+                content, self.buf = self.buf[:idx_open], self.buf[idx_open:]
+                yield from self._end_block(block, buf_attr, content)
+                self.state = "preamble"
+                continue
+            if idx_close >= 0:
+                content, self.buf = self.buf[:idx_close], self.buf[idx_close + len(close):]
+                yield from self._end_block(block, buf_attr, content)
+                self.state = "preamble"
+                continue
+            safe = len(self.buf) - MARKER_LOOKAHEAD
+            if safe > 0:
+                content, self.buf = self.buf[:safe], self.buf[safe:]
+                yield from self._emit(block, buf_attr, content)
             return
 
     def flush(self) -> Iterator[ParsedEvent]:
