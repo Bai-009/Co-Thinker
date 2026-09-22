@@ -31,6 +31,8 @@ function useMedia(query: string) {
   return match
 }
 
+const clip = (text: string, max = 36) => (text.length > max ? `${text.slice(0, max)}…` : text)
+
 export default function App({ transport }: { transport?: Transport } = {}) {
   const s = useSession(() => transport ?? new ExampleTransport())
   const { state, draft, actions } = s
@@ -129,6 +131,11 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     setNavPinned(next)
     repository.write('nav', next)
   }
+  // 确认删除时点名是哪一段；标题太长就截住。
+  const deleteTarget = s.sessions.find((x) => x.id === deleteId)
+  const deleteCopy = deleteTarget?.title
+    ? `「${clip(deleteTarget.title)}」和它的地基会一起删掉，不能恢复。`
+    : '这段对话和它的地基会一起删掉，不能恢复。'
   // 收放边栏的开关：边栏展开时住在边栏里，收起时才回到顶栏左上角。
   const navToggle = (
     <IconButton
@@ -326,17 +333,23 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         )}
       </Dialog>
 
-      <Dialog open={Boolean(deleteId)} onClose={() => setDeleteId(null)} title="删除这段对话？">
+      <Dialog
+        open={Boolean(deleteId)}
+        onClose={() => setDeleteId(null)}
+        title="删除这段对话？"
+        plain
+        className="ct-confirm"
+      >
         <div className="ct-dialog-copy">
-          <p>这段对话和它的地基将被删除，无法恢复。</p>
+          <p>{deleteCopy}</p>
         </div>
         <div className="ct-dialog-footer">
-          <button type="button" className="ct-secondary" onClick={() => setDeleteId(null)}>
+          <button type="button" className="ct-ghost" onClick={() => setDeleteId(null)}>
             取消
           </button>
           <button
             type="button"
-            className="ct-primary"
+            className="ct-primary is-destructive"
             onClick={() => {
               if (deleteId) void actions.deleteSession(deleteId)
               setDeleteId(null)

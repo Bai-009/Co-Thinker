@@ -21,9 +21,11 @@ interface Props {
   subtitle?: string
   children: ReactNode
   className?: string
+  /** 只留标题和内容，不要顶栏和关闭按钮——给一句话的确认用。 */
+  plain?: boolean
 }
 
-export function Dialog({ open, onClose, title, subtitle, children, className = '' }: Props) {
+export function Dialog({ open, onClose, title, subtitle, children, className = '', plain = false }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -57,13 +59,17 @@ export function Dialog({ open, onClose, title, subtitle, children, className = '
         }
       }}
     >
-      <div className="ct-dialog-head">
-        <div>
-          <h2>{title}</h2>
-          {subtitle && <p className="ct-dialog-sub">{subtitle}</p>}
+      {plain ? (
+        <h2 className="ct-dialog-title">{title}</h2>
+      ) : (
+        <div className="ct-dialog-head">
+          <div>
+            <h2>{title}</h2>
+            {subtitle && <p className="ct-dialog-sub">{subtitle}</p>}
+          </div>
+          <IconButton name="close" label="关闭" onClick={onClose} />
         </div>
-        <IconButton name="close" label="关闭" onClick={onClose} />
-      </div>
+      )}
       {children}
     </dialog>
   )

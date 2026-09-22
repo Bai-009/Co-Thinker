@@ -66,7 +66,7 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
                   <span>{s.title}</span>
                   <small>{s.messageCount} 句</small>
                 </button>
-                <IconButton name="close" label={`删除「${s.title}」`} onClick={() => onDelete(s.id)} />
+                <IconButton name="trash" label={`删除「${s.title}」`} onClick={() => onDelete(s.id)} />
               </div>
             ))}
           </section>

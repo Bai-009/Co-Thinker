@@ -258,6 +258,15 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-primary { background: var(--ink-strong); color: var(--ct-accent-ink); border: 1px solid var(--ink-strong); }
 .ct-primary:hover:not(:disabled) { opacity: 0.9; }
 .ct-primary:disabled, .ct-secondary:disabled { opacity: 0.45; }
+.ct-primary.is-destructive { background: var(--ct-error); border-color: var(--ct-error); color: #fff; }
+.ct-ghost { display: inline-flex; align-items: center; font-size: var(--text-sm); letter-spacing: 0.02em; padding: 6px 12px; border-radius: var(--radius-sm); color: var(--ink-soft); transition: color var(--dur-micro) var(--ease-out), background var(--dur-micro) var(--ease-out); }
+.ct-ghost:hover { color: var(--ink-strong); background: var(--ct-hover); }
+/* 一句话的确认框：窄一点，没有顶栏和分割线。 */
+.ct-confirm { width: 400px; max-width: min(400px, calc(100vw - 32px)); border-radius: 12px; }
+.ct-dialog-title { font-size: var(--text-heading); font-weight: 500; letter-spacing: 0.02em; color: var(--ink-strong); padding: 26px 28px 0; }
+.ct-confirm .ct-dialog-copy { padding: 10px 28px 0; color: var(--ink-soft); }
+.ct-confirm .ct-dialog-copy p { margin: 0; }
+.ct-confirm .ct-dialog-footer { border-top: 0; padding: 22px 28px 24px; }
 .ct-brief-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; }
 .ct-brief-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 24px 24px; }
 .ct-brief-body .ct-markdown { font-weight: 400; opacity: 1; font-size: var(--text-body); line-height: 1.72; color: var(--ink-strong); }
@@ -296,7 +305,9 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-conversation:hover .ct-conversation-select > span { color: var(--ink); }
 .ct-conversation.is-current .ct-conversation-select > span { color: var(--ink-strong); font-weight: 500; }
 .ct-conversation-select > small { display: block; font-size: var(--text-xs); color: var(--ink-faint); }
-.ct-conversation > .ct-icon { width: 22px; height: 22px; opacity: 0; margin-right: 4px; }
+.ct-conversation > .ct-icon { width: 24px; height: 24px; opacity: 0; margin-right: 6px; color: var(--ink-faint); }
+.ct-conversation > .ct-icon svg { width: 15px; height: 15px; }
+.ct-conversation > .ct-icon:hover { color: var(--ct-error); background: rgba(160, 52, 42, 0.06); }
 .ct-conversation:hover > .ct-icon, .ct-conversation:focus-within > .ct-icon { opacity: 1; }
 .ct-nav-empty { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-ui); padding: 10px 8px 0; line-height: 1.6; }
 .ct-record-dialog { width: min(600px, calc(100vw - 32px)); margin: var(--space-4) var(--space-4) var(--space-4) auto; height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); padding: var(--space-3) var(--space-6) 0; }
