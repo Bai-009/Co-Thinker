@@ -1,0 +1,86 @@
+/* Co-Thinker · 视觉系统的地
+   —— 一张纸。墨是冷的近黑，纸是干净的近白，中间只有灰，不用任何土色。
+      纸的冷暖由「感觉」通道在很小的范围里推，纹理由清晰度管。 */
+:root {
+  --ink-strong: #17181a;
+  --ink: #33363a;
+  --ink-soft: #6b7076;
+  --ink-faint: #a3a8ad;
+  --ink-ghost: #cfd2d5;
+  --line: rgba(23, 24, 26, 0.08);
+  --line-strong: rgba(23, 24, 26, 0.16);
+
+  /* 三层：地（纸）、纸上的纸（白页，不透明）、墨 */
+  --paper: var(--sense-base);
+  --sheet: #ffffff;
+  --sheet-edge: rgba(23, 24, 26, 0.12);
+  --sheet-shadow: 0 1px 2px rgba(23, 24, 26, 0.04), 0 14px 36px -20px rgba(23, 24, 26, 0.16);
+  --sheet-shadow-focus: 0 1px 3px rgba(23, 24, 26, 0.06), 0 22px 48px -22px rgba(23, 24, 26, 0.22);
+
+  /* 组件里沿用的名字，全部落到上面这几阶 */
+  --ct-paper: var(--paper);
+  --ct-surface: var(--paper);
+  --ct-card: var(--sheet);
+  --ct-wash: rgba(23, 24, 26, 0.035);
+  --ct-hover: rgba(23, 24, 26, 0.045);
+  --ct-ink-strong: var(--ink-strong);
+  --ct-ink: var(--ink);
+  --ct-secondary: var(--ink-soft);
+  --ct-muted: var(--ink-faint);
+  --ct-ghost: var(--ink-ghost);
+  --ct-line: var(--line-strong);
+  --ct-soft-line: var(--line);
+  --ct-accent: var(--ink-strong);
+  --ct-accent-ink: #ffffff;
+  --ct-highlight: rgba(23, 24, 26, 0.06);
+  --ct-focus: var(--ink-soft);
+  --ct-error: rgba(168, 48, 40, 0.92);
+  --ct-backdrop: rgba(18, 20, 24, 0.28);
+  --ct-shadow: 0 1px 2px rgba(23, 24, 26, 0.04), 0 28px 80px -28px rgba(23, 24, 26, 0.2);
+
+  --ct-font: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --ct-display: "Lora", "Iowan Old Style", "Songti SC", Georgia, serif;
+  --ct-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-ui: 13.5px;
+  --text-body: 14.5px;
+  --text-reading: 15px;
+  --text-heading: 16px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* 节奏：交互 ≤600ms；状态 4–6s；呼吸 3.6s；氛围漂移 18s。互不同步。 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 280ms;
+  --dur-short: 380ms;
+  --dur-long: 600ms;
+  --dur-breathe: 3.6s;
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-popover: 100;
+}
+
+/* 感觉通道（由 JS 写入；初始值就是正中那张纸） */
+@property --sense-base { syntax: '<color>'; inherits: true; initial-value: rgb(245, 245, 244); }
+@property --sense-accent { syntax: '<color>'; inherits: true; initial-value: rgb(202, 202, 203); }
+@property --sense-engagement { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --sense-grain { syntax: '<number>'; inherits: true; initial-value: 0.14; }
+@property --sense-edge { syntax: '<number>'; inherits: true; initial-value: 0.5; }
+@property --sense-haze { syntax: '<length>'; inherits: true; initial-value: 0.8px; }
