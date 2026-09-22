@@ -256,6 +256,15 @@ export async function* readSse(res: Response): AsyncGenerator<Record<string, unk
   }
 }
 
+/** 第一句话的前一截当标题：到第一个句读为止，最多 40 字。 */
+export function titleFrom(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  const cut = t.search(/[。！？；，,!?;]/)
+  const head = cut > 0 ? t.slice(0, cut) : t
+  return head.length > 40 ? head.slice(0, 40) : head
+}
+
 const hexId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID().replace(/-/g, '')
@@ -315,11 +324,16 @@ export class HttpTransport implements Transport {
     return `live-title:${sid}`
   }
 
-  /** 标题钉死：后端每轮把地基叙述的第一句当标题，会一直变；界面只认第一次拿到的那个。 */
-  private pinTitle(sid: string, fromServer: string): string {
+  /** 标题钉死：只认这段对话的第一句话。后端每轮把地基叙述的第一句当标题，会一直变，也太长；
+   *  拿到历史时用第一句话钉住，之后不再变。列表里没打开过的对话先照后端给的显示，不钉。 */
+  private pinTitle(sid: string, fromServer: string, firstUser?: string): string {
     const pinned = this.repository.read<string>(this.titleKey(sid), (v): v is string => typeof v === 'string' && v.length > 0)
     if (pinned) return pinned
-    if (fromServer) this.repository.write(this.titleKey(sid), fromServer)
+    const own = titleFrom(firstUser ?? '')
+    if (own) {
+      this.repository.write(this.titleKey(sid), own)
+      return own
+    }
     return fromServer
   }
 
@@ -380,7 +394,11 @@ export class HttpTransport implements Transport {
       coveredThrough: (f.memory?.covered_messages ?? 0) - 1,
       prose: f.foundation_narrative.trim(),
       claims: parseClaims(f.foundation),
-      open: [f.focus, ...(f.open_questions ?? [])].map((x) => (x ?? '').trim()).filter(Boolean),
+      // 松动的每条一件事：后端把几件事写在一行里用分号隔开，这里按分号分开。
+      open: [f.focus, ...(f.open_questions ?? [])]
+        .flatMap((x) => String(x ?? '').split(/[；;]\s*/))
+        .map((x) => x.trim())
+        .filter(Boolean),
       sense: {
         certainty: clamp01(sense.certainty),
         resonance: clamp01(sense.resonance),
@@ -399,9 +417,11 @@ export class HttpTransport implements Transport {
       this.json<{ sessions: SessionRow[] }>('GET', '/sessions'),
     ])
     s.messages = toMessages(sid, history.messages ?? [], s.messages)
-    s.title =
-      this.pinTitle(sid, rows.sessions.find((r) => r.id === sid)?.title ?? '') ||
-      (s.messages.find((m) => m.role === 'user')?.text.slice(0, 24) ?? '')
+    s.title = this.pinTitle(
+      sid,
+      rows.sessions.find((r) => r.id === sid)?.title ?? '',
+      s.messages.find((m) => m.role === 'user')?.text,
+    )
     s.groundwork = await this.groundworkFrom(s, foundation)
     this.reconcileHistory(s)
     return s

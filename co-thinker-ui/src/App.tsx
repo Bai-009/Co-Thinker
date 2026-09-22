@@ -219,10 +219,10 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       )}
       <header className="ct-masthead">
         {!showNav && (
+          // 边栏收起时顶栏左上只留两个图标；名字住在边栏里，不跟着跳到顶栏来撑场面。
           <div className="ct-masthead-brand">
             {navToggle}
             {!blank && <IconButton name="plus" label="新建对话" onClick={() => void actions.newSession()} />}
-            {brand}
           </div>
         )}
         {hasMessages && (
