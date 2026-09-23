@@ -50,3 +50,9 @@ def test_empty_old_passes_anything():
 def test_describe_mentions_each_problem():
     text = describe_for_model(["第 3 条不见了"])
     assert "第 3 条不见了" in text and "重新输出全部块" in text
+
+
+def test_punctuation_only_changes_pass():
+    old = "1. 给会照着写、但不知道的人做。"
+    assert check_ratchet(old, "1. 给会照着写，但不知道的人做。") == []
+    assert any("措辞被改了" in p for p in check_ratchet(old, "1. 给会照着写，但不懂的人做。"))
