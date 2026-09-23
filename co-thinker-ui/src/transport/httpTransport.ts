@@ -3,6 +3,7 @@
 // 让界面对示例与真实两条传输层一视同仁。
 
 import { normalize } from '../domain/markdown'
+import { dropRepeats } from '../domain/similar'
 import {
   composeReference,
   parseSourceLabel,
@@ -397,10 +398,12 @@ export class HttpTransport implements Transport {
       prose: f.foundation_narrative.trim(),
       claims: parseClaims(f.foundation),
       // 松动的每条一件事：后端把几件事写在一行里用分号隔开，这里按分号分开。
-      open: [f.focus, ...(f.open_questions ?? [])]
+      open: dropRepeats(
+        [f.focus, ...(f.open_questions ?? [])]
         .flatMap((x) => String(x ?? '').split(/[；;]\s*/))
         .map((x) => x.trim())
         .filter(Boolean),
+      ),
       sense: {
         certainty: clamp01(sense.certainty),
         resonance: clamp01(sense.resonance),
