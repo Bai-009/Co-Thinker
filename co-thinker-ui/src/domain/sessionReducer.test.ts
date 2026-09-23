@@ -178,3 +178,15 @@ describe('地基版本的留存', () => {
     expect(state.groundwork?.prose).toBe('重试后的第二版')
   })
 })
+
+describe('这一轮没生成出来', () => {
+  it('失败留在那一轮下面，不顶到对话上方', () => {
+    let state = sessionReducer(loaded(), { type: 'turn/started', requestId: 'r1', optimistic: null })
+    state = sessionReducer(state, {
+      type: 'reply',
+      event: { type: 'reply_failed', requestId: 'r1', sessionId: 's1', reason: '生成失败', snapshot: snapshot() },
+    })
+    expect(state.messages.at(-1)).toMatchObject({ role: 'assistant', status: 'failed', error: '生成失败' })
+    expect(state.error).toBeNull()
+  })
+})

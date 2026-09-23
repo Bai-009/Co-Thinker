@@ -232,6 +232,12 @@ button.ct-sheet-tab:hover { color: var(--ink-soft); }
 .ct-ground-section > h3 { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; font-family: var(--ct-display); font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: 0.18em; color: var(--ink-soft); }
 .ct-ground-section > h3::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .ct-ground-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 13px; }
+/* 条目默认收着：散文是地基的正文，条目和变化需要时再展开；这一行和小标题同一套字 */
+.ct-ground-toggle { display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 36px; font-family: var(--ct-display); font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: 0.18em; color: var(--ink-soft); text-align: left; transition: color var(--dur-short) var(--ease-out); }
+.ct-ground-toggle::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ct-ground-toggle:hover { color: var(--ink-strong); }
+.ct-ground-toggle-count { letter-spacing: 0.06em; color: var(--ink-faint); font-variant-numeric: tabular-nums lining-nums; }
+.ct-ground-toggle + .ct-ground-section { margin-top: 22px; }
 .ct-ground-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; border-radius: 2px; scroll-margin-block: var(--space-10); }
 .ct-ground-num { justify-self: start; font-family: var(--ct-display); font-size: 12.5px; line-height: 1; letter-spacing: 0.02em; color: var(--ink-faint); font-variant-numeric: tabular-nums lining-nums; transition: color var(--dur-short) var(--ease-out); }
 button.ct-ground-num:hover { color: var(--ink-strong); text-decoration: underline; text-underline-offset: 3px; }

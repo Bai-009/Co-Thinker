@@ -126,6 +126,9 @@ describe('一段完整的操作', () => {
     expect(document.querySelector('.ct-settled')).toHaveTextContent('地基')
     expect(screen.queryByText('沉淀到这里')).toBeNull()
 
+    // 条目默认收着，散文是正文；打开地基那张纸，展开条目再看。
+    await user.click(screen.getByRole('button', { name: '地基' }))
+    await user.click(screen.getByRole('button', { name: /条目/ }))
     expect(screen.getByText(/城市指南那种形式我不做/)).toBeInTheDocument()
     // 没定的另立一节，用同样的墨色，靠措辞说明。
     expect(screen.getByText('待定')).toBeInTheDocument()
@@ -145,5 +148,19 @@ describe('一段完整的操作', () => {
     await user.click(screen.getByRole('button', { name: '定位到第 1 条的原文' }))
     const mine = screen.getByLabelText('我的消息')
     expect(mine.querySelector('.ct-user-text')).toHaveClass('is-highlighted')
+  }, 20000)
+
+  it('从地基引一条，进输入框的是带来源的引用，不是一段文字', async () => {
+    const { user } = mount()
+    await firstTurn(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: '01' })).toBeInTheDocument(), {
+      timeout: 6000,
+    })
+
+    await user.click(screen.getByRole('button', { name: '地基' }))
+    await user.click(screen.getByRole('button', { name: /条目/ }))
+    await user.click(screen.getAllByRole('button', { name: '引用这条' })[0])
+    expect(document.querySelector('.ct-quote span')).toHaveTextContent('地基第 1 条')
+    expect(screen.getByLabelText('说一句')).toHaveValue('')
   }, 20000)
 })

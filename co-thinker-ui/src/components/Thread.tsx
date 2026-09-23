@@ -4,11 +4,12 @@ import { normalize } from '../domain/markdown'
 import {
   makeReference,
   rangeFromSelection,
+  referenceCaption,
   resolveReference,
   type SelectionRange,
 } from '../domain/reference'
 import type { GroundworkDelta } from '../domain/groundwork'
-import type { MemoryStatus, Message } from '../domain/types'
+import type { GroundworkClaim, MemoryStatus, Message } from '../domain/types'
 
 interface Props {
   sessionId: string
@@ -20,6 +21,8 @@ interface Props {
   /** 地基覆盖到的 sequence；之后的话还没沉淀。 */
   boundary: number | null
   memory: MemoryStatus
+  /** 当前地基，判断引的那一条还在不在。 */
+  groundwork: { claims: GroundworkClaim[]; open: string[] } | null
   onQuote: (reference: ReturnType<typeof makeReference>) => void
   onEdit: (message: Message) => void
   onRetry: () => void
@@ -99,6 +102,7 @@ export function Thread(props: Props) {
     boundary,
     memory,
     onQuote,
+    groundwork,
     onEdit,
     onRetry,
     onRetryMemory,
@@ -164,7 +168,7 @@ export function Thread(props: Props) {
       onTouchEnd={readSelection}
     >
       {messages.map((message) => {
-        const state = resolveReference(message.reference, messages, sessionId)
+        const state = resolveReference(message.reference, messages, sessionId, groundwork)
         const highlighted = flash === message.id
         const delta = settled.get(message.sequence)
         // 地基还没覆盖到的话，墨色浅一层；落进地基那一刻再深回来。不用文字说。
@@ -183,13 +187,7 @@ export function Thread(props: Props) {
               >
                 {message.reference && (
                   <blockquote className="ct-message-reference">
-                    <span>
-                      {state.status === 'changed'
-                        ? '引用 · 原文已修改'
-                        : state.status === 'missing'
-                          ? '引用 · 原文已删除'
-                          : '引用'}
-                    </span>
+                    <span>{referenceCaption(state)}</span>
                     <Markdown source={message.reference.quote} />
                   </blockquote>
                 )}
@@ -219,7 +217,7 @@ export function Thread(props: Props) {
                   <span />
                   <span className="ct-sr-only">正在思考</span>
                 </div>
-              ) : (
+              ) : message.status === 'failed' && !message.text ? null : (
                 <div className="ct-voice" style={voiceStyle(message.confidence)}>
                   <div
                     className={`ct-markdown${highlighted ? ' is-highlighted' : ''}`}
@@ -230,7 +228,7 @@ export function Thread(props: Props) {
                   </div>
                 </div>
               )}
-              {message.status !== 'streaming' && (
+              {message.status !== 'streaming' && message.status !== 'failed' && (
                 // 落在这一轮的底部留白里，不压在正文最后一行上。
                 <div className="ct-voice-actions">
                   <button type="button" aria-label="引用这条回复" onClick={() => quoteWhole(message)}>

@@ -52,7 +52,7 @@ describe('输入', () => {
       reference: { sessionId: 's', sourceId: 'm', sourceVersion: 1, quote: '构图仍然在引导观看' },
       referenceState: { status: 'changed' } as never,
     })
-    expect(screen.getByText('原文已修改')).toBeInTheDocument()
+    expect(screen.getByText(/原文已修改/)).toBeInTheDocument()
     expect(screen.queryByText(/已确认/)).toBeNull()
   })
 })

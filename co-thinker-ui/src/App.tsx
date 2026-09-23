@@ -8,7 +8,7 @@ import type { SheetView } from './components/Sheet'
 import { Sidebar } from './components/Sidebar'
 import { Dialog, IconButton, canAnimate } from './components/Dialog'
 import { useScrollAnchor } from './hooks/useScrollAnchor'
-import { resolveReference } from './domain/reference'
+import { makeClaimReference, makeOpenReference, resolveReference } from './domain/reference'
 import { groundworkDelta, isEmptyDelta, type GroundworkDelta } from './domain/groundwork'
 import { ExampleTransport } from './transport/exampleTransport'
 import { applyClarity, applySense } from './lib/sense'
@@ -65,8 +65,8 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const anchor = useScrollAnchor('thread', state.messages)
 
   const referenceState = useMemo(
-    () => resolveReference(draft.reference, state.messages, state.id),
-    [draft.reference, state.id, state.messages],
+    () => resolveReference(draft.reference, state.messages, state.id, state.groundwork),
+    [draft.reference, state.groundwork, state.id, state.messages],
   )
 
   const requestLocate = useCallback((id: string) => {
@@ -197,7 +197,8 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         views={views}
         onSwitch={(v) => (v === 'prompt' ? openPrompt() : setTrack(v))}
         onClose={closeTrack}
-        onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
+        // 从地基引一条：带来源进输入框，和引对话里的一句一样；待定的一条没有编号，按原文记。
+        onQuoteClaim={(n, text) => actions.quote(n === null ? makeOpenReference(state.id, text) : makeClaimReference(state.id, n, text))}
         onLocate={requestLocate}
         sourceExists={(id) => state.messages.some((m) => m.id === id)}
         locateRequest={claimLocate}
@@ -340,6 +341,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
               settled={settled}
               boundary={state.groundwork?.coveredThrough ?? null}
               memory={state.memory}
+              groundwork={state.groundwork}
               onQuote={actions.quote}
               onEdit={actions.beginEdit}
               onRetry={actions.retryTurn}
@@ -364,6 +366,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           onCancelEdit={actions.cancelEdit}
           onDropReference={() => s.setDraft({ reference: null })}
           onLocate={requestLocate}
+          onLocateClaim={locateClaim}
         />
         {leaving && (
           <div className="ct-empty is-leaving" aria-hidden="true" style={leaving}>

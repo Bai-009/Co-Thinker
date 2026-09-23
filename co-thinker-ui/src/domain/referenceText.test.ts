@@ -1,4 +1,4 @@
-import { composeReference, parseSourceLabel, sourceLabel, splitReference } from './referenceText'
+import { claimLabel, composeReference, OPEN_LABEL, parseSourceLabel, sourceLabel, splitReference } from './referenceText'
 
 describe('引用写进正文', () => {
   it('拼出来能拆回去，多行引文也行', () => {
@@ -19,5 +19,11 @@ describe('引用写进正文', () => {
     expect(parseSourceLabel(sourceLabel('user', 0))).toEqual({ role: 'user', sequence: 0 })
     expect(parseSourceLabel('模型那一边 第 12 句')).toEqual({ role: 'assistant', sequence: 11 })
     expect(parseSourceLabel('Co-Thinker')).toBeNull()
+  })
+
+  it('地基里的一条和待定也有来源标签', () => {
+    expect(claimLabel(3)).toBe('地基 第 3 条')
+    expect(parseSourceLabel('地基 第 3 条')).toEqual({ claim: 3 })
+    expect(parseSourceLabel(OPEN_LABEL)).toEqual({ open: true })
   })
 })

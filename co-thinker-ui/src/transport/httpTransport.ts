@@ -4,8 +4,11 @@
 
 import { normalize } from '../domain/markdown'
 import { dropRepeats } from '../domain/similar'
+import { claimNumber, makeClaimReference, makeOpenReference, OPEN_SOURCE } from '../domain/reference'
 import {
+  claimLabel,
   composeReference,
+  OPEN_LABEL,
   parseSourceLabel,
   sourceLabel,
   splitReference,
@@ -217,6 +220,8 @@ export function toMessages(sid: string, raw: RawMessage[], previous: Message[]):
 /** 从来源标签指回原句，只在被点名的那句里找引文的位置，不跨消息找。找不到就是依据已改变。 */
 function rebuildReference(sid: string, ref: ReferenceText, raw: RawMessage[], before: number): Reference {
   const label = parseSourceLabel(ref.source)
+  if (label && 'claim' in label) return makeClaimReference(sid, label.claim, ref.quote)
+  if (label && 'open' in label) return makeOpenReference(sid, ref.quote)
   const src = label && label.sequence < before ? raw[label.sequence] : undefined
   if (!label || !src || src.role !== label.role) {
     return { sessionId: sid, sourceId: '', sourceVersion: 0, quote: ref.quote }
@@ -232,11 +237,17 @@ function rebuildReference(sid: string, ref: ReferenceText, raw: RawMessage[], be
   }
 }
 
-/** 发给服务端的正文：带引用时按「引用材料」格式拼进去，来源标签指向被引的那句。 */
+/** 发给服务端的正文：带引用时按「引用材料」格式拼进去，来源标签指向被引的那句，或地基里的那一条。 */
 export function contentForServer(text: string, reference: Reference | undefined, messages: Message[]): string {
   if (!reference?.quote) return text
-  const src = messages.find((m) => m.id === reference.sourceId)
-  const source = src ? sourceLabel(src.role, src.sequence) : '来源不在这次对话里'
+  const n = claimNumber(reference)
+  let source: string
+  if (n !== null) source = claimLabel(n)
+  else if (reference.sourceId === OPEN_SOURCE) source = OPEN_LABEL
+  else {
+    const src = messages.find((m) => m.id === reference.sourceId)
+    source = src ? sourceLabel(src.role, src.sequence) : '来源不在这次对话里'
+  }
   return composeReference(text, { source, quote: reference.quote })
 }
 
