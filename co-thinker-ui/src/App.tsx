@@ -3,9 +3,10 @@ import { useSession } from './controller/useSession'
 import { Thread } from './components/Thread'
 import { Composer } from './components/Composer'
 import { Records } from './components/Records'
+import { PromptSheet } from './components/PromptSheet'
+import type { SheetView } from './components/Sheet'
 import { Sidebar } from './components/Sidebar'
 import { Dialog, IconButton, canAnimate } from './components/Dialog'
-import { Markdown } from './components/Markdown'
 import { useScrollAnchor } from './hooks/useScrollAnchor'
 import { resolveReference } from './domain/reference'
 import { groundworkDelta, isEmptyDelta, type GroundworkDelta } from './domain/groundwork'
@@ -38,27 +39,19 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const { state, draft, actions } = s
   const [locate, setLocate] = useState<{ id: string; n: number } | null>(null)
   const [claimLocate, setClaimLocate] = useState<{ n: number; k: number } | null>(null)
-  // 地基不主动打开：头几轮没什么可看的，等人来开。
-  const [recordOpen, setRecordOpen] = useState(false)
+  // 右边那张纸：地基，或者凝成的 Prompt；不主动打开，头几轮没什么可看的，等人来开。
+  const [track, setTrack] = useState<SheetView | null>(null)
+  const recordOpen = track !== null
+  // 收起时栏宽还在过渡，里面仍是刚才那一份，不跳回地基。
+  const lastView = useRef<SheetView>('records')
+  if (track) lastView.current = track
+  const view = track ?? lastView.current
   // 对话列表：宽屏是一栏，收放记住；窄屏是从左边推出来的抽屉。
   const [navPinned, setNavPinned] = useState(
     () => repository.read<boolean>('nav', (v): v is boolean => typeof v === 'boolean') ?? true,
   )
   const [navDrawer, setNavDrawer] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  // 复制简报之后按钮说一声「已复制」，一秒多就恢复。
-  const [copied, setCopied] = useState(false)
-  const copyTimer = useRef<number | undefined>(undefined)
-  const copyBrief = useCallback(async (markdown: string) => {
-    try {
-      await navigator.clipboard?.writeText(markdown)
-      setCopied(true)
-      window.clearTimeout(copyTimer.current)
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1600)
-    } catch {
-      /* 剪贴板不可用就不说话 */
-    }
-  }, [])
   // 两栏等宽，每栏都得放得下一页正文。
   const wide = useMedia('(min-width: 1280px)')
   const roomy = useMedia('(min-width: 1120px)')
@@ -81,7 +74,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   }, [])
 
   const locateClaim = useCallback((n: number) => {
-    setRecordOpen(true)
+    setTrack('records')
     setClaimLocate((prev) => ({ n, k: (prev?.k ?? 0) + 1 }))
   }, [])
 
@@ -102,8 +95,17 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const streaming = state.phase === 'streaming' || state.phase === 'submitting'
   const title = state.title || '这次思考'
   const brief = s.brief
-  const briefOpen = Boolean(brief.snapshot || brief.loading || brief.error)
   const showRecords = recordOpen && hasMessages
+  // 有过 Prompt（或正在凝）时，那张纸上就有两份文稿，标题变成切换。
+  const hasPrompt = Boolean(brief.snapshot || brief.loading || brief.error)
+  const views: SheetView[] = hasPrompt ? ['records', 'prompt'] : ['records']
+  const promptCurrent = Boolean(brief.snapshot) && !s.briefRelation.added && !s.briefRelation.quoteChanged
+  // 人说到第几句：地基和 Prompt 各自依据前几轮。
+  const turnsUpTo = (sequence: number) => state.messages.filter((m) => m.role === 'user' && m.sequence <= sequence).length
+  const openPrompt = () => {
+    setTrack('prompt')
+    if (!promptCurrent && !brief.loading) void actions.generateBrief()
+  }
 
   // 首屏和对话之间：输入框从中间滑到底部（或回去），标题在原地淡去，而不是跳过去。
   const mainRef = useRef<HTMLElement>(null)
@@ -145,17 +147,33 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     }
   })
 
-  const records = (
-    <Records
-      groundwork={state.groundwork}
-      updating={state.memory.state === 'updating'}
-      onClose={wide ? undefined : () => setRecordOpen(false)}
-      onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
-      onLocate={requestLocate}
-      sourceExists={(id) => state.messages.some((m) => m.id === id)}
-      locateRequest={claimLocate}
-    />
-  )
+  const closeTrack = wide ? undefined : () => setTrack(null)
+  const sheet =
+    view === 'prompt' ? (
+      <PromptSheet
+        brief={brief}
+        relation={s.briefRelation}
+        coveredTurns={turnsUpTo(brief.snapshot?.cutoffSequence ?? state.messages.at(-1)?.sequence ?? -1)}
+        views={views}
+        onSwitch={setTrack}
+        onClose={closeTrack}
+        onRegenerate={() => void actions.generateBrief()}
+      />
+    ) : (
+      <Records
+        groundwork={state.groundwork}
+        updating={state.memory.state === 'updating'}
+        coveredTurns={turnsUpTo(state.groundwork?.coveredThrough ?? -1)}
+        views={views}
+        onSwitch={(v) => (v === 'prompt' ? openPrompt() : setTrack(v))}
+        onClose={closeTrack}
+        onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
+        onLocate={requestLocate}
+        sourceExists={(id) => state.messages.some((m) => m.id === id)}
+        locateRequest={claimLocate}
+        onCrystallize={s.busy ? undefined : openPrompt}
+      />
+    )
 
   const sidebar = (
     <Sidebar
@@ -234,23 +252,24 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           {preview && <span className="ct-masthead-note">示例 · 未连接模型</span>}
           <button
             type="button"
-            className={`ct-toolbar-button${showRecords ? ' is-selected' : ''}`}
+            className={`ct-toolbar-button${showRecords && track === 'records' ? ' is-selected' : ''}`}
             aria-label="地基"
-            aria-pressed={showRecords}
+            aria-pressed={showRecords && track === 'records'}
             disabled={!hasMessages}
-            title="达成的共识，和还在松动的地方"
-            onClick={() => setRecordOpen((x) => !x)}
+            title="已经定下的，和还没定的"
+            onClick={() => setTrack((x) => (x === 'records' ? null : 'records'))}
           >
             地基
           </button>
           <button
             type="button"
-            className="ct-toolbar-button"
-            title="基于当前地基和对话生成执行简报"
-            disabled={!hasMessages || s.busy}
-            onClick={() => void actions.generateBrief()}
+            className={`ct-toolbar-button${showRecords && track === 'prompt' ? ' is-selected' : ''}`}
+            aria-pressed={showRecords && track === 'prompt'}
+            title="把地基和整场对话凝成一段 Prompt，交给执行的 agent"
+            disabled={!hasMessages || (s.busy && !promptCurrent)}
+            onClick={() => (showRecords && track === 'prompt' ? setTrack(null) : openPrompt())}
           >
-            生成简报
+            {promptCurrent || brief.loading ? 'Prompt' : '生成 Prompt'}
           </button>
         </div>
       </header>
@@ -329,63 +348,21 @@ export default function App({ transport }: { transport?: Transport } = {}) {
 
       {wide && hasMessages && (
         <aside className="ct-records-track" aria-hidden={!recordOpen}>
-          <div className="ct-records">{records}</div>
+          <div className="ct-records">{sheet}</div>
         </aside>
       )}
 
       <Dialog
         open={showRecords && !wide}
-        onClose={() => setRecordOpen(false)}
-        title="地基"
+        onClose={() => setTrack(null)}
+        title={view === 'prompt' ? 'Prompt' : '地基'}
         className="ct-record-dialog"
       >
-        {!wide && records}
+        {!wide && sheet}
       </Dialog>
 
       <Dialog open={navDrawer} onClose={() => setNavDrawer(false)} title="最近的思考" className="ct-nav-dialog">
         {sidebar}
-      </Dialog>
-
-      <Dialog
-        open={briefOpen}
-        onClose={actions.closeBrief}
-        title="执行简报"
-        className="ct-brief-dialog"
-      >
-        {brief.loading && <p className="ct-working">正在凝结这场对话…</p>}
-        {brief.error && (
-          <div className="ct-turn-error" role="alert">
-            {brief.error}
-            <button type="button" onClick={() => void actions.generateBrief()}>
-              重新生成
-            </button>
-          </div>
-        )}
-        {brief.snapshot && (
-          <>
-            {(s.briefRelation.added || s.briefRelation.quoteChanged) && (
-              <div className="ct-turn-status" role="status">
-                <span>{s.briefRelation.quoteChanged ? '引用依据已改变' : '这之后有新增'}</span>
-                <button type="button" onClick={() => void actions.generateBrief()}>
-                  重新生成
-                </button>
-              </div>
-            )}
-            <div className="ct-brief-body">
-              <div className="ct-markdown">
-                <Markdown source={brief.snapshot.markdown} />
-              </div>
-            </div>
-            <div className="ct-dialog-footer">
-              <button type="button" className="ct-ghost" onClick={() => void actions.generateBrief()}>
-                重新生成
-              </button>
-              <button type="button" className="ct-primary" onClick={() => void copyBrief(brief.snapshot!.markdown)}>
-                {copied ? '已复制' : '复制'}
-              </button>
-            </div>
-          </>
-        )}
       </Dialog>
 
       <Dialog

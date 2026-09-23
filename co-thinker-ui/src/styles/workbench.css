@@ -66,7 +66,7 @@ body::after {
 :where(.ct-app, .ct-dialog) button:disabled { cursor: not-allowed; }
 .ct-app :focus-visible, .ct-dialog :focus-visible { outline: 1px solid var(--ct-focus); outline-offset: 3px; border-radius: 2px; }
 .ct-app ::selection, .ct-dialog ::selection { background: rgba(23, 24, 26, 0.12); }
-.ct-app textarea, .ct-records-scroll, .ct-brief-body, .ct-conversations, .ct-markdown pre, .ct-markdown table { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.ct-app textarea, .ct-sheet-scroll, .ct-conversations, .ct-markdown pre, .ct-markdown table { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .ct-app ::-webkit-scrollbar, .ct-dialog ::-webkit-scrollbar { width: 4px; height: 4px; }
 .ct-app ::-webkit-scrollbar-track, .ct-dialog ::-webkit-scrollbar-track { background: transparent; }
 .ct-app ::-webkit-scrollbar-thumb, .ct-dialog ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 2px; }
@@ -158,7 +158,7 @@ body::after {
 .ct-settled button { color: var(--ink-soft); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; text-underline-offset: 3px; transition: color var(--dur-short) var(--ease-out), opacity var(--dur-short) var(--ease-out); }
 .ct-settled button.is-tentative { opacity: 0.5; }
 .ct-settled .is-superseded { display: inline-flex; align-items: baseline; gap: 4px; }
-.ct-settled s { text-decoration-thickness: 1px; }
+.ct-settled button.is-faded { opacity: 0.5; }
 .ct-settled button:hover { color: var(--ink-strong); text-decoration: underline; }
 .ct-settled .ct-status-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--ink-soft); align-self: center; animation: ct-breathe var(--dur-breathe) ease-in-out infinite; }
 .ct-settled.is-failed { color: var(--ct-error); }
@@ -198,33 +198,90 @@ body::after {
 .ct-records-track { grid-area: records; min-width: 0; min-height: 0; overflow: hidden; display: flex; justify-content: flex-end; visibility: hidden; transition: visibility 0s linear var(--dur-panel); }
 .ct-app.has-records .ct-records-track { visibility: visible; transition-delay: 0s; }
 .ct-records { flex: none; width: calc(var(--records-open) - var(--space-6) - var(--space-3)); min-height: 0; display: flex; flex-direction: column; margin: var(--space-2) var(--space-6) var(--space-6) var(--space-3); background: var(--sheet); border: 1px solid var(--sheet-edge); border-radius: var(--radius-lg); box-shadow: var(--ct-shadow); }
-.ct-records-content { flex: 1; min-height: 0; display: flex; flex-direction: column; width: min(100%, 744px); margin: 0; padding: var(--space-3) var(--space-6) 0; }
-.ct-records-head { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
-.ct-records-head h2 { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: var(--ink-soft); }
-.ct-records-head .ct-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-soft); animation: ct-breathe var(--dur-breathe) ease-in-out infinite; }
-.ct-records-head .ct-status-dot.is-updating { background: var(--ink-strong); animation-duration: 1.4s; }
-.ct-records-head .ct-icon { width: 24px; height: 24px; }
-.ct-records-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-5) 2px var(--space-8); -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px); mask-image: linear-gradient(to bottom, transparent, #000 18px); }
-.ct-record-summary { font-size: var(--text-reading); line-height: 1.8; color: var(--ink-strong); overflow-wrap: anywhere; }
-.ct-record-section { margin-top: var(--space-6); }
-.ct-record-section > h3 { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: var(--ink-soft); margin-bottom: var(--space-3); }
-.ct-record-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
-.ct-record-list li { position: relative; display: flex; align-items: baseline; gap: var(--space-3); padding-left: 24px; font-size: var(--text-body); line-height: 1.75; color: var(--ink-strong); overflow-wrap: anywhere; scroll-margin-block: var(--space-10); border-radius: 2px; }
-.ct-record-num { position: absolute; left: 0; top: 0.1em; font-size: 11px; line-height: inherit; color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; transition: color var(--dur-short) var(--ease-out); }
-button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underline; text-underline-offset: 3px; }
-.ct-record-text { flex: 1; min-width: 0; }
-.ct-record-quote { flex: none; font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
-.ct-record-list li:hover .ct-record-quote, .ct-record-list li:focus-within .ct-record-quote { opacity: 1; }
-.ct-record-quote:hover { color: var(--ink-strong); }
-.ct-record-list li.is-tentative { color: var(--ink-soft); }
-.ct-record-list li.is-superseded { color: var(--ink-faint); }
-.ct-record-list s { text-decoration-thickness: 1px; }
-.ct-record-note { font-size: 10.5px; letter-spacing: 0.1em; color: var(--ink-faint); margin-left: var(--space-2); }
-.ct-question { display: flex; align-items: baseline; gap: var(--space-3); width: 100%; text-align: left; color: var(--ink); font-size: var(--text-body); line-height: 1.75; padding: var(--space-1) 0; overflow-wrap: anywhere; }
-.ct-question > span:first-child { flex: 1; min-width: 0; }
-.ct-question > .ct-record-quote { opacity: 0; }
-.ct-question:hover > .ct-record-quote, .ct-question:focus-visible > .ct-record-quote { opacity: 1; }
-.ct-record-foot { margin-top: var(--space-6); font-size: var(--text-xs); color: var(--ink-faint); letter-spacing: 0.01em; }
+/* ---- 纸上的两份文稿：地基和 Prompt 共用一个版式 ------------------------------
+   说话用黑体；落成文字的（地基的叙述、Prompt 的标题）用宋体。标题就是切换。
+   定下的和没定的同一种墨色，没定靠措辞和一个空心的圈说明，不靠变淡。 */
+.ct-sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; width: min(100%, 760px); margin: 0 auto; padding: 0 var(--space-10); }
+/* 换一份文稿时，像翻过一页：新的一页从下面一点点浮上来 */
+.ct-sheet { animation: ct-sheet-in 420ms var(--ease-out) both; }
+@keyframes ct-sheet-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ct-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: 26px 0 17px; border-bottom: 1px solid var(--line); }
+.ct-sheet-titles { min-width: 0; }
+.ct-sheet-tabs { display: flex; align-items: baseline; gap: 22px; }
+.ct-sheet-tab { font-family: var(--ct-display); font-size: 19px; font-weight: 400; line-height: 1.3; letter-spacing: 0.03em; color: var(--ink-ghost); transition: color var(--dur-short) var(--ease-out); }
+button.ct-sheet-tab { color: var(--ink-faint); }
+button.ct-sheet-tab:hover { color: var(--ink-soft); }
+.ct-sheet-tab.is-current { color: var(--ink-strong); }
+.ct-sheet-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--text-sm); line-height: 1.5; letter-spacing: 0.02em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.ct-sheet-meta .ct-status-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--ink-strong); animation: ct-breathe 1.4s ease-in-out infinite; }
+.ct-sheet-actions { display: flex; align-items: center; gap: var(--space-2); flex: none; padding-top: 1px; }
+.ct-sheet-actions > .ct-icon { width: 28px; height: 28px; margin-right: -6px; }
+.ct-sheet-scroll { flex: 1; min-height: 0; overflow: auto; padding: 28px 2px var(--space-12); -webkit-mask-image: linear-gradient(to bottom, transparent, #000 16px); mask-image: linear-gradient(to bottom, transparent, #000 16px); }
+.ct-sheet-status { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 20px; padding: 9px 14px; border-radius: var(--radius-sm); background: var(--ct-wash); font-size: var(--text-sm); line-height: 1.6; color: var(--ink); }
+.ct-sheet-status button { font-family: var(--ct-display); color: var(--ink-strong); text-decoration: underline; text-underline-offset: 3px; }
+
+/* 地基的叙述：一页书的排法 */
+.ct-ground-prose p { font-family: var(--ct-display); font-size: 16.5px; line-height: 1.95; letter-spacing: 0.01em; color: var(--ink-strong); text-align: justify; text-justify: inter-character; overflow-wrap: anywhere; }
+.ct-ground-prose p + p { margin-top: 0.8em; }
+.ct-ground-section { margin-top: 36px; }
+.ct-ground-section > h3 { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; font-family: var(--ct-display); font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: 0.18em; color: var(--ink-soft); }
+.ct-ground-section > h3::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ct-ground-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 13px; }
+.ct-ground-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; border-radius: 2px; scroll-margin-block: var(--space-10); }
+.ct-ground-num { justify-self: start; font-family: var(--ct-display); font-size: 12.5px; line-height: 1; letter-spacing: 0.02em; color: var(--ink-faint); font-variant-numeric: tabular-nums lining-nums; transition: color var(--dur-short) var(--ease-out); }
+button.ct-ground-num:hover { color: var(--ink-strong); text-decoration: underline; text-underline-offset: 3px; }
+.ct-ground-mark { align-self: start; justify-self: start; width: 7px; height: 7px; margin: 10px 0 0 2px; border: 1px solid var(--ink-soft); border-radius: 50%; }
+.ct-ground-body { min-width: 0; }
+.ct-ground-text { font-size: 15px; line-height: 1.75; color: var(--ink-strong); overflow-wrap: anywhere; }
+.ct-ground-why { display: block; margin-top: 2px; font-family: var(--ct-display); font-size: var(--text-sm); line-height: 1.7; letter-spacing: 0.02em; color: var(--ink-soft); }
+/* 改过的条目不划掉：挂在接替它的那条下面，一道竖线，写明原先是什么、为什么改 */
+.ct-ground-origins { display: grid; gap: 6px; margin-top: 8px; padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.ct-ground-origin { font-size: 13px; line-height: 1.7; color: var(--ink-soft); border-radius: 2px; overflow-wrap: anywhere; scroll-margin-block: var(--space-10); }
+.ct-ground-origin-label { margin-right: 8px; font-family: var(--ct-display); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.ct-ground-quote { font-family: var(--ct-display); font-size: var(--text-sm); color: var(--ink-faint); opacity: 0; transition: opacity var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.ct-ground-item:hover .ct-ground-quote, .ct-ground-item:focus-within .ct-ground-quote { opacity: 1; }
+.ct-ground-quote:hover { color: var(--ink-strong); }
+
+/* 读完地基的下一步 */
+.ct-sheet-next { display: flex; align-items: center; gap: 16px; margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line); }
+.ct-sheet-next p { font-size: var(--text-sm); line-height: 1.6; color: var(--ink-soft); }
+.ct-pill { display: inline-flex; flex: none; align-items: center; gap: 7px; padding: 7px 17px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--sheet); font-family: var(--ct-display); font-size: 13.5px; letter-spacing: 0.05em; color: var(--ink-strong); white-space: nowrap; transition: border-color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.ct-pill:hover { border-color: var(--ink-soft); background: var(--ct-hover); }
+.ct-pill.is-small { padding: 5px 14px 5px 12px; font-size: 13px; }
+.ct-pill.is-done { border-color: transparent; background: rgba(23, 24, 26, 0.06); }
+.ct-pill svg { width: 14px; height: 14px; flex: none; }
+.ct-quiet { font-family: var(--ct-display); font-size: 13px; letter-spacing: 0.04em; color: var(--ink-soft); padding: 5px 8px; border-radius: var(--radius-sm); transition: color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out); }
+.ct-quiet:hover { color: var(--ink-strong); background: var(--ct-hover); }
+
+/* Prompt：同一套字，版心和地基一样；小标题是一行字加一道细线 */
+.ct-prompt-doc .ct-markdown { font-weight: 400; opacity: 1; font-size: 15px; line-height: 1.85; color: var(--ink-strong); }
+.ct-prompt-doc .ct-markdown > :first-child { margin-top: 0; }
+.ct-prompt-doc .ct-markdown h2, .ct-prompt-doc .ct-markdown h3 { display: flex; align-items: center; gap: 14px; margin: 30px 0 10px; font-family: var(--ct-display); font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: 0.18em; color: var(--ink-soft); }
+.ct-prompt-doc .ct-markdown h2::after, .ct-prompt-doc .ct-markdown h3::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ct-prompt-doc .ct-markdown h2:first-child + p { font-family: var(--ct-display); font-size: 16.5px; line-height: 1.9; letter-spacing: 0.01em; }
+.ct-prompt-doc .ct-markdown p { margin: 0 0 10px; white-space: pre-line; }  /* 一行一句写的，照原样换行；不把换行变成句号后面的一格空 */
+.ct-prompt-doc .ct-markdown ul, .ct-prompt-doc .ct-markdown ol { margin: 0 0 10px; padding-left: 1.25em; }
+.ct-prompt-doc .ct-markdown li { padding-left: 2px; overflow-wrap: anywhere; }
+.ct-prompt-doc .ct-markdown li + li { margin-top: 5px; }
+.ct-prompt-doc .ct-markdown li::marker { color: var(--ink-faint); }
+.ct-prompt-doc .ct-markdown hr { display: none; }
+.ct-prompt-doc .ct-markdown strong { font-weight: 500; }
+.ct-prompt-doc.is-streaming .ct-stream-cursor { display: block; margin: 2px 0 0; }
+/* 一下子整份到的时候，各段依次显出来：从微微的虚到实 */
+.ct-prompt-doc.is-fresh .ct-markdown > * { animation: ct-crystal 640ms var(--ease-out) both; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(2) { animation-delay: 50ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(3) { animation-delay: 100ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(4) { animation-delay: 150ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(5) { animation-delay: 200ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(6) { animation-delay: 250ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(7) { animation-delay: 300ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(8) { animation-delay: 350ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(9) { animation-delay: 400ms; }
+.ct-prompt-doc.is-fresh .ct-markdown > :nth-child(n + 10) { animation-delay: 450ms; }
+@keyframes ct-crystal { from { opacity: 0; filter: blur(3px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: none; } }
+.ct-prompt-foot { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); font-size: var(--text-sm); line-height: 1.6; color: var(--ink-soft); }
+.ct-crystallizing { display: flex; align-items: center; gap: 12px; font-family: var(--ct-display); font-size: 14px; letter-spacing: 0.04em; color: var(--ink-soft); }
+.ct-crystallizing .ct-thinking { padding: 0; height: auto; }
 .ct-empty-note { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-ui); line-height: 1.7; }
 
 /* ---- 首屏：一篇还没写的文章的扉页 --------------------------------------- */
@@ -253,7 +310,7 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 /* 关着的 dialog 靠 UA 的 display:none 藏起来，display 只在 [open] 时给。 */
 .ct-dialog[open] { display: flex; animation: ct-modal-in 360ms var(--ease-out); }
 .ct-dialog:focus { outline: none; }
-.ct-dialog::backdrop { background: var(--ct-backdrop); backdrop-filter: blur(6px); animation: ct-backdrop-in 260ms var(--ease-out); }
+.ct-dialog::backdrop { background: var(--ct-backdrop); backdrop-filter: blur(3px); animation: ct-backdrop-in 260ms var(--ease-out); }
 @keyframes ct-modal-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ct-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ct-modal-out { to { opacity: 0; transform: translateY(6px); } }
@@ -284,27 +341,6 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-confirm .ct-dialog-copy { padding: 10px 28px 0; color: var(--ink-soft); }
 .ct-confirm .ct-dialog-copy p { margin: 0; }
 .ct-confirm .ct-dialog-footer { border-top: 0; padding: 22px 28px 24px; }
-/* 执行简报：一张文档，不是一个表单。标题用衬线，条目带编号，引用靠一根细线。 */
-.ct-brief-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 80px); border-radius: 12px; }
-.ct-brief-dialog > .ct-dialog-head { align-items: center; padding: 26px 30px 4px 40px; border-bottom: 0; }
-.ct-brief-dialog > .ct-dialog-head h2 { font-family: var(--ct-display); font-size: 22px; font-weight: 500; letter-spacing: 0.01em; color: var(--ink-strong); }
-.ct-brief-dialog > .ct-dialog-head .ct-icon { width: 28px; height: 28px; }
-.ct-brief-dialog .ct-turn-status { margin: 10px 40px 0; }
-.ct-brief-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 40px 28px; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 18px), transparent); }
-.ct-brief-body .ct-markdown { font-weight: 400; opacity: 1; font-size: var(--text-body); line-height: 1.75; color: var(--ink-strong); }
-.ct-brief-body .ct-markdown p { margin: 0 0 10px; }
-.ct-brief-body .ct-markdown h2, .ct-brief-body .ct-markdown h3 { font: 500 11px/1.5 var(--ct-font); letter-spacing: 0.14em; color: var(--ink-soft); margin: 30px 0 10px; counter-reset: brief; }
-.ct-brief-body .ct-markdown h2:first-child { margin-top: 6px; }
-.ct-brief-body .ct-markdown h2:first-child + p { font-size: var(--text-reading); line-height: 1.8; }
-.ct-brief-body .ct-markdown ul, .ct-brief-body .ct-markdown ol { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.ct-brief-body .ct-markdown li { position: relative; padding-left: 24px; overflow-wrap: anywhere; }
-.ct-brief-body .ct-markdown li > p { margin: 0; }
-.ct-brief-body .ct-markdown li::before { counter-increment: brief; content: counter(brief, decimal-leading-zero); position: absolute; left: 0; top: 0.1em; font-size: 11px; line-height: inherit; color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
-.ct-brief-body .ct-markdown blockquote { margin: 0 0 8px; padding: 1px 0 1px 14px; border-left: 1px solid var(--line-strong); color: var(--ink-soft); }
-.ct-brief-body .ct-markdown blockquote p { margin: 0; font-size: var(--text-ui); line-height: 1.7; }
-.ct-brief-body .ct-markdown hr { display: none; }
-.ct-brief-body .ct-markdown strong { font-weight: 500; }
-.ct-brief-dialog > .ct-dialog-footer { border-top: 0; padding: 10px 40px 26px; }
 .ct-working { font-family: var(--ct-display); color: var(--ink-soft); font-size: var(--text-ui); padding: 56px 40px 64px; text-align: center; }
 .ct-turn-status[role="status"] { padding: 12px 24px 0; }
 .ct-loading { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-12) 0; color: var(--ink-faint); font-size: var(--text-sm); }
@@ -344,9 +380,9 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-conversation > .ct-icon:hover { color: var(--ct-error); background: rgba(160, 52, 42, 0.06); }
 .ct-conversation:hover > .ct-icon, .ct-conversation:focus-within > .ct-icon { opacity: 1; }
 .ct-nav-empty { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-ui); padding: 10px 8px 0; line-height: 1.6; }
-.ct-record-dialog { width: min(600px, calc(100vw - 32px)); margin: var(--space-4) var(--space-4) var(--space-4) auto; height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); padding: var(--space-3) var(--space-6) 0; }
+.ct-record-dialog { width: min(640px, calc(100vw - 32px)); margin: var(--space-4) var(--space-4) var(--space-4) auto; height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); padding: 0; border-radius: var(--radius-lg); }
 .ct-record-dialog > .ct-dialog-head { display: none; }
-.ct-record-dialog .ct-records-content { width: 100%; padding: 0; }
+.ct-record-dialog .ct-sheet { width: 100%; padding: 0 var(--space-8); }
 .ct-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
 /* ---- 尺寸 ---------------------------------------------------------------- */
@@ -367,8 +403,10 @@ button.ct-record-num:hover { color: var(--ink-strong); text-decoration: underlin
   .ct-compose-area { padding: var(--space-2) var(--space-4) var(--space-3); }
   .ct-composer textarea { font-size: 16px; }
   .ct-app.is-welcome .ct-compose-area { padding: 28px var(--space-4) 0; }
-  .ct-record-dialog { margin: var(--space-2); width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: var(--space-3) var(--space-4) 0; }
+  .ct-record-dialog { margin: var(--space-2); width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+  .ct-record-dialog .ct-sheet { padding: 0 var(--space-5); }
+  .ct-sheet-next { flex-direction: column; align-items: flex-start; }
   .ct-dialog-footer > span { display: none; }
 }
-@media (hover: none) { .ct-voice-actions, .ct-user-actions, .ct-conversation > .ct-icon, .ct-record-quote, .ct-question > .ct-record-quote { opacity: 1; } }
+@media (hover: none) { .ct-voice-actions, .ct-user-actions, .ct-conversation > .ct-icon, .ct-ground-quote { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { body::before, .ct-app *, .ct-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .ct-dialog[open] { animation: none; } }

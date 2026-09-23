@@ -636,14 +636,21 @@ export class HttpTransport implements Transport {
       )
   }
 
-  async requestBrief(req: BriefRequest, signal: AbortSignal): Promise<BriefSnapshot> {
+  async requestBrief(
+    req: BriefRequest,
+    signal: AbortSignal,
+    onDelta?: (markdown: string) => void,
+  ): Promise<BriefSnapshot> {
     const s = this.state(req.sessionId)
     const res = await this.request('POST', '/brief', req.sessionId, undefined, signal)
     let markdown = ''
     let error: string | null = null
     for await (const ev of readSse(res)) {
       const type = String(ev.type ?? '')
-      if (type === 'brief_delta') markdown += String(ev.content ?? '')
+      if (type === 'brief_delta') {
+        markdown += String(ev.content ?? '')
+        onDelta?.(markdown)
+      }
       else if (type === 'brief_done') markdown = String(ev.brief ?? markdown)
       else if (type === 'error') error = String(ev.detail ?? '简报没有生成出来。')
     }

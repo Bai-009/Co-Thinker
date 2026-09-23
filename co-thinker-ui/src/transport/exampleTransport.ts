@@ -440,7 +440,11 @@ export class ExampleTransport implements Transport {
     })
   }
 
-  async requestBrief(req: BriefRequest, signal: AbortSignal): Promise<BriefSnapshot> {
+  async requestBrief(
+    req: BriefRequest,
+    signal: AbortSignal,
+    onDelta?: (markdown: string) => void,
+  ): Promise<BriefSnapshot> {
     const s = this.db[req.sessionId]
     if (!s) throw new Error('会话不存在')
     // 冻结在请求这一刻。
@@ -488,6 +492,14 @@ export class ExampleTransport implements Transport {
     }
     lines.push(`---`)
     lines.push(`示例模式：以上内容由示例脚本与前端拼出，没有经过模型综合。`)
+
+    // 像真实服务那样一段一段地到。
+    if (onDelta) {
+      for (let i = 1; i <= lines.length; i++) {
+        onDelta(lines.slice(0, i).join('\n\n'))
+        await wait(90, signal)
+      }
+    }
 
     return {
       id: req.requestId,

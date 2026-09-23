@@ -84,6 +84,36 @@ describe('一段完整的操作', () => {
     expect(screen.getByRole('button', { name: '取消引用' })).toBeInTheDocument()
   }, 20000)
 
+  it('一键凝成 Prompt：在地基那张纸上打开，看得到依据，复制后说一声', async () => {
+    const { user } = mount()
+    await firstTurn(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: '01' })).toBeInTheDocument(), {
+      timeout: 6000,
+    })
+    let copied = ''
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void (copied = text) },
+    })
+
+    await user.click(screen.getByRole('button', { name: '生成 Prompt' }))
+    // 不是弹窗：标题变成两份文稿之间的切换，Prompt 是当前那份。
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Prompt', selected: true })).toBeInTheDocument())
+    expect(screen.getByRole('tab', { name: '地基' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/依据前 1 轮对话和地基/)).toBeInTheDocument(), { timeout: 8000 })
+    expect(screen.getByText(/交给 Cursor、Claude Code/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '复制' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument())
+    expect(copied).toContain('## 我想做什么')
+
+    // 切回地基再回来：不重新生成，还是那一份。
+    await user.click(screen.getByRole('tab', { name: '地基' }))
+    expect(screen.getByRole('button', { name: 'Prompt' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Prompt' }))
+    expect(screen.getByText(/依据前 1 轮对话和地基/)).toBeInTheDocument()
+  }, 30000)
+
   it('后台跟上之后，这一轮定下了什么写在对话里，地基按认识状态分开说', async () => {
     mount()
     const user = userEvent.setup()
@@ -97,7 +127,8 @@ describe('一段完整的操作', () => {
     expect(screen.queryByText('沉淀到这里')).toBeNull()
 
     expect(screen.getByText(/城市指南那种形式我不做/)).toBeInTheDocument()
-    expect(screen.getByText('还在松动')).toBeInTheDocument()
+    // 没定的另立一节，用同样的墨色，靠措辞说明。
+    expect(screen.getByText('还没定')).toBeInTheDocument()
     expect(screen.getByText('换成什么形式，现在没有答案。')).toBeInTheDocument()
   }, 20000)
 
