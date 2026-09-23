@@ -50,7 +50,7 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
         <span>新建对话</span>
       </button>
 
-      <nav className="ct-conversations" aria-label="最近的思考">
+      <nav className="ct-conversations" aria-label="最近对话">
         {groups.map((g) => (
           <section key={g.label} className="ct-nav-group">
             <h3>{g.label}</h3>
@@ -69,7 +69,7 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
             ))}
           </section>
         ))}
-        {sessions.length === 0 && <p className="ct-nav-empty">还没有对话</p>}
+        {sessions.length === 0 && <p className="ct-nav-empty">暂无对话</p>}
       </nav>
     </div>
   )

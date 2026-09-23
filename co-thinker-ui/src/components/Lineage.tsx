@@ -69,7 +69,7 @@ export function Lineage({ claim, n, origin, highlighted, updatedAt, onQuote }: P
               type="button"
               className="ct-lineage-from"
               data-claim={origin.n}
-              aria-label={`由第 ${origin.n} 条改来，看原来的说法`}
+              aria-label={`由第 ${origin.n} 条修改而来，查看修改前的内容`}
               aria-pressed={past}
               onPointerEnter={(e) => e.pointerType === 'mouse' && look()}
               onClick={(e) => {

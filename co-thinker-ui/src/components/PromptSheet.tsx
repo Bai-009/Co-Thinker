@@ -71,11 +71,11 @@ export function PromptSheet({ brief, relation, coveredTurns, views, onSwitch, on
 
   const stale = relation.added || relation.quoteChanged
   const meta = brief.loading
-    ? '正在凝成'
+    ? '正在生成'
     : snapshot
-      ? `依据前 ${coveredTurns} 轮对话和地基 · ${when(snapshot.createdAt)}`
+      ? `截至第 ${coveredTurns} 轮 · ${when(snapshot.createdAt)}`
       : brief.error
-        ? '没有生成出来'
+        ? '生成失败'
         : ''
 
   const actions = snapshot ? (
@@ -90,7 +90,7 @@ export function PromptSheet({ brief, relation, coveredTurns, views, onSwitch, on
         aria-live="polite"
       >
         <Icon name={copied === 'done' ? 'check' : 'copy'} />
-        {copied === 'done' ? '已复制' : copied === 'failed' ? '没复制上' : '复制'}
+        {copied === 'done' ? '已复制' : copied === 'failed' ? '复制失败' : '复制'}
       </button>
     </>
   ) : null
@@ -102,7 +102,7 @@ export function PromptSheet({ brief, relation, coveredTurns, views, onSwitch, on
       <div className="ct-sheet-scroll">
         {snapshot && stale && (
           <p className="ct-sheet-status" role="status">
-            {relation.quoteChanged ? '这份 Prompt 采用的原话后来改过。' : '这份 Prompt 之后，对话又往前走了。'}
+            {relation.quoteChanged ? '生成后，引用的原文有修改。' : '生成后，对话有了新内容。'}
             <button type="button" onClick={onRegenerate}>
               重新生成
             </button>
@@ -125,7 +125,7 @@ export function PromptSheet({ brief, relation, coveredTurns, views, onSwitch, on
               <span />
               <span />
             </span>
-            正在把这场对话凝成 Prompt
+            正在生成 Prompt
           </div>
         )}
 
@@ -139,14 +139,11 @@ export function PromptSheet({ brief, relation, coveredTurns, views, onSwitch, on
         )}
 
         {snapshot && !brief.loading && (
-          <>
-            <article className={`ct-prompt-doc${fresh ? ' is-fresh' : ''}`}>
-              <div className="ct-markdown">
-                <Markdown source={snapshot.markdown} />
-              </div>
-            </article>
-            <p className="ct-prompt-foot">复制下来，可以直接交给 Cursor、Claude Code 这类执行 agent。</p>
-          </>
+          <article className={`ct-prompt-doc${fresh ? ' is-fresh' : ''}`}>
+            <div className="ct-markdown">
+              <Markdown source={snapshot.markdown} />
+            </div>
+          </article>
         )}
       </div>
     </div>

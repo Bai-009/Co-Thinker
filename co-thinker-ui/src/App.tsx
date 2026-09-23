@@ -93,7 +93,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const hasMessages = state.messages.length > 0
   const blank = !hasMessages
   const streaming = state.phase === 'streaming' || state.phase === 'submitting'
-  const title = state.title || '这次思考'
+  const title = state.title || '新对话'
   const brief = s.brief
   const showRecords = recordOpen && hasMessages
   // 有过 Prompt（或正在凝）时，那张纸上就有两份文稿，标题变成切换。
@@ -171,7 +171,6 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         onLocate={requestLocate}
         sourceExists={(id) => state.messages.some((m) => m.id === id)}
         locateRequest={claimLocate}
-        onCrystallize={s.busy ? undefined : openPrompt}
       />
     )
 
@@ -203,8 +202,8 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   // 确认删除时点名是哪一段；标题太长就截住。
   const deleteTarget = s.sessions.find((x) => x.id === deleteId)
   const deleteCopy = deleteTarget?.title
-    ? `「${clip(deleteTarget.title)}」和它的地基会一起删掉，不能恢复。`
-    : '这段对话和它的地基会一起删掉，不能恢复。'
+    ? `「${clip(deleteTarget.title)}」及其地基将被删除，无法恢复。`
+    : '对话及其地基将被删除，无法恢复。'
   // 收放边栏的开关：边栏展开时住在边栏里，收起时才回到顶栏左上角。
   const navToggle = (
     <IconButton
@@ -256,7 +255,6 @@ export default function App({ transport }: { transport?: Transport } = {}) {
             aria-label="地基"
             aria-pressed={showRecords && track === 'records'}
             disabled={!hasMessages}
-            title="已经定下的，和还没定的"
             onClick={() => setTrack((x) => (x === 'records' ? null : 'records'))}
           >
             地基
@@ -265,7 +263,6 @@ export default function App({ transport }: { transport?: Transport } = {}) {
             type="button"
             className={`ct-toolbar-button${showRecords && track === 'prompt' ? ' is-selected' : ''}`}
             aria-pressed={showRecords && track === 'prompt'}
-            title="把地基和整场对话凝成一段 Prompt，交给执行的 agent"
             disabled={!hasMessages || (s.busy && !promptCurrent)}
             onClick={() => (showRecords && track === 'prompt' ? setTrack(null) : openPrompt())}
           >
@@ -281,7 +278,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
             {s.notice ?? state.error}
             {state.error && !s.busy && (
               <button type="button" onClick={() => void actions.retryTurn()}>
-                重试这一轮
+                重试
               </button>
             )}
             <button
@@ -361,14 +358,14 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         {!wide && sheet}
       </Dialog>
 
-      <Dialog open={navDrawer} onClose={() => setNavDrawer(false)} title="最近的思考" className="ct-nav-dialog">
+      <Dialog open={navDrawer} onClose={() => setNavDrawer(false)} title="最近对话" className="ct-nav-dialog">
         {sidebar}
       </Dialog>
 
       <Dialog
         open={Boolean(deleteId)}
         onClose={() => setDeleteId(null)}
-        title="删除这段对话？"
+        title="删除对话？"
         plain
         className="ct-confirm"
       >

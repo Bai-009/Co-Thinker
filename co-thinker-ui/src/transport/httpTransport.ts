@@ -76,6 +76,17 @@ const clamp01 = (v: unknown) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5
 }
 
+/** 待定那一节的条目，一条一件事：后端把几件事写在一行里用分号隔开，这里按分号分开；
+ *  节标题已经是「待定」，条目末尾后端写的「，还没定」「，还没选」不再重复。 */
+export function openItems(parts: unknown[]): string[] {
+  return dropRepeats(
+    parts
+      .flatMap((x) => String(x ?? '').split(/[；;]\s*/))
+      .map((x) => x.trim().replace(/[，,]?\s*还没有?(?:定|选|决定)[。.]?$/, '').trim())
+      .filter(Boolean),
+  )
+}
+
 /** 内容的稳定指纹当 version 用：回改后同一位置的话变了，旧引用就会看到「依据已改变」。 */
 export function fingerprint(text: string): number {
   let h = 2166136261
@@ -397,13 +408,7 @@ export class HttpTransport implements Transport {
       coveredThrough: (f.memory?.covered_messages ?? 0) - 1,
       prose: f.foundation_narrative.trim(),
       claims: parseClaims(f.foundation),
-      // 松动的每条一件事：后端把几件事写在一行里用分号隔开，这里按分号分开。
-      open: dropRepeats(
-        [f.focus, ...(f.open_questions ?? [])]
-        .flatMap((x) => String(x ?? '').split(/[；;]\s*/))
-        .map((x) => x.trim())
-        .filter(Boolean),
-      ),
+      open: openItems([f.focus, ...(f.open_questions ?? [])]),
       sense: {
         certainty: clamp01(sense.certainty),
         resonance: clamp01(sense.resonance),
@@ -537,7 +542,7 @@ export class HttpTransport implements Transport {
         lastVoice = index
         if (type === 'voice_delta' && ev.content) yield delta(String(ev.content))
       } else if (type === 'error') {
-        failed = String(ev.detail ?? '这一轮没有生成出来。你的输入已经保存，可以重试。')
+        failed = String(ev.detail ?? '生成失败，输入已保存。')
       }
     }
 
@@ -576,7 +581,7 @@ export class HttpTransport implements Transport {
     }
     const again = () => {
       if (Date.now() - startedAt > 180_000) {
-        fail('共同记录这一轮等太久了，可以重试。')
+        fail('地基更新超时')
         return
       }
       setTimeout(() => void tick(), 1500)
@@ -600,7 +605,7 @@ export class HttpTransport implements Transport {
         return
       }
       if (state !== 'ready') {
-        fail(f.memory?.detail || '共同记录暂未更新，对话已保存。')
+        fail(f.memory?.detail || '地基未更新，对话已保存。')
         return
       }
       let g: Groundwork | null
@@ -612,7 +617,7 @@ export class HttpTransport implements Transport {
       }
       this.watching.delete(sid)
       if (!g) {
-        fail('还没有可以沉淀的内容。')
+        fail('暂无可写入地基的内容')
         return
       }
       s.groundwork = g
@@ -631,7 +636,7 @@ export class HttpTransport implements Transport {
           type: 'memory_failed',
           sessionId,
           historyRevision: s.revision,
-          reason: '没有连上后端。',
+          reason: '无法连接服务',
         }),
       )
   }
@@ -652,7 +657,7 @@ export class HttpTransport implements Transport {
         onDelta?.(markdown)
       }
       else if (type === 'brief_done') markdown = String(ev.brief ?? markdown)
-      else if (type === 'error') error = String(ev.detail ?? '简报没有生成出来。')
+      else if (type === 'error') error = String(ev.detail ?? 'Prompt 生成失败')
     }
     if (error) throw new Error(error)
     const covered = s.groundwork?.coveredThrough ?? -1

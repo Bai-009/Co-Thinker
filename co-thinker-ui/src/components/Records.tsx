@@ -19,14 +19,12 @@ interface Props {
   sourceExists: (messageId: string) => boolean
   /** 计数器变化即定位到第 n 条。 */
   locateRequest: { n: number; k: number } | null
-  /** 读完地基，下一步就是凝成 Prompt。 */
-  onCrystallize?: () => void
 }
 
 const num = (n: number) => String(n).padStart(2, '0')
 
 export function Records(props: Props) {
-  const { groundwork, updating, coveredTurns, views, onSwitch, onClose, onQuoteClaim, onLocate, sourceExists, locateRequest, onCrystallize } = props
+  const { groundwork, updating, coveredTurns, views, onSwitch, onClose, onQuoteClaim, onLocate, sourceExists, locateRequest } = props
   const scroll = useRef<HTMLDivElement>(null)
   const [flash, setFlash] = useState<number | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>()
@@ -46,7 +44,7 @@ export function Records(props: Props) {
   const tentative = arranged.filter(({ claim }) => claim.status === 'tentative')
   const open = groundwork?.open ?? []
 
-  const meta = updating ? '正在更新' : groundwork ? `依据前 ${coveredTurns} 轮 · ${when(groundwork.updatedAt)}更新` : undefined
+  const meta = updating ? '正在更新' : groundwork ? `截至第 ${coveredTurns} 轮 · ${when(groundwork.updatedAt)}更新` : undefined
 
   return (
     <div className="ct-sheet ct-records-content">
@@ -60,12 +58,13 @@ export function Records(props: Props) {
             ))}
           </div>
         ) : (
-          <p className="ct-empty-note">{updating ? '正在写第一版。' : '说上几句，这里会慢慢有东西。'}</p>
+          // 头一版还在写的时候，页头已经说了「正在更新」，这里不再重复。
+          !updating && <p className="ct-empty-note">暂无内容</p>
         )}
 
         {settled.length > 0 && (
-          <section className="ct-ground-section" aria-label="已经定下">
-            <h3>已经定下</h3>
+          <section className="ct-ground-section" aria-label="共识">
+            <h3>共识</h3>
             <ol className="ct-ground-list">
               {settled.map(({ claim, n, origins }) => {
                 // 有来路的一条：平时只见现在的说法，停在编号或句末上标上，原地变回原来的说法。
@@ -89,8 +88,8 @@ export function Records(props: Props) {
                       <button
                         type="button"
                         className="ct-ground-num"
-                        aria-label={`回到第 ${n} 条的原话`}
-                        title="原话"
+                        aria-label={`定位到第 ${n} 条的原文`}
+                        title="定位到原文"
                         onClick={() => onLocate(source)}
                       >
                         {num(n)}
@@ -109,7 +108,7 @@ export function Records(props: Props) {
                               className={`ct-ground-origin${flash === o.n ? ' is-highlighted' : ''}`}
                               data-claim={o.n}
                             >
-                              <span className="ct-ground-origin-label">原先 {num(o.n)}</span>
+                              <span className="ct-ground-origin-label">原 {num(o.n)}</span>
                               <span>{o.claim.text}</span>
                               {o.claim.note && <span className="ct-ground-why">{o.claim.note}</span>}
                             </p>
@@ -130,8 +129,8 @@ export function Records(props: Props) {
         )}
 
         {(tentative.length > 0 || open.length > 0) && (
-          <section className="ct-ground-section" aria-label="还没定">
-            <h3>还没定</h3>
+          <section className="ct-ground-section" aria-label="待定">
+            <h3>待定</h3>
             <ul className="ct-ground-list is-open">
               {tentative.map(({ claim, n }) => (
                 <li key={claim.id} className={`ct-ground-item${flash === n ? ' is-highlighted' : ''}`} data-claim={n}>
@@ -150,22 +149,13 @@ export function Records(props: Props) {
                   <div className="ct-ground-body">
                     <p className="ct-ground-text">{q}</p>
                   </div>
-                  <button type="button" className="ct-ground-quote" aria-label="引用这一问" onClick={() => onQuoteClaim(q)}>
+                  <button type="button" className="ct-ground-quote" aria-label="引用这个问题" onClick={() => onQuoteClaim(q)}>
                     引用
                   </button>
                 </li>
               ))}
             </ul>
           </section>
-        )}
-
-        {onCrystallize && groundwork && (
-          <div className="ct-sheet-next">
-            <button type="button" className="ct-pill" onClick={onCrystallize}>
-              凝成 Prompt
-            </button>
-            <p>地基和整场对话，凝成一段可以直接交给执行 agent 的 Prompt。</p>
-          </div>
         )}
       </div>
     </div>

@@ -185,7 +185,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
           }
         } catch (error) {
           if ((error as DOMException)?.name !== 'AbortError') {
-            setNotice('这一轮没有完成。你的输入已经保存，可以重试。')
+            setNotice('回复中断，输入已保存。')
           }
           const snapshot = await transport.loadSession(sessionId)
           if (snapshot) dispatch({ type: 'session/loaded', snapshot })
@@ -310,7 +310,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
       }
     } catch (error) {
       if ((error as DOMException)?.name !== 'AbortError' && briefAbort.current === controller) {
-        setBrief({ snapshot: null, loading: false, error: '这份文档没有生成出来，可以重试。', draft: '' })
+        setBrief({ snapshot: null, loading: false, error: 'Prompt 生成失败', draft: '' })
       }
     }
   }, [state.historyRevision, state.id, transport])

@@ -84,7 +84,7 @@ export function Composer(props: Props) {
     onSend()
   }
 
-  const sendLabel = streaming ? '发送并打断当前回复' : editing ? '保存并重新思考' : '发送'
+  const sendLabel = streaming ? '停止当前回复并发送' : editing ? '保存并重新生成' : '发送'
 
   return (
     <footer className="ct-compose-area">
@@ -99,7 +99,7 @@ export function Composer(props: Props) {
           {editing && (
             <div className="ct-edit-banner">
               <Icon name="edit" size={14} />
-              <span>修改上一条 · 后续回复与地基会随之重建</span>
+              <span>正在修改上一条 · 之后的回复和地基会重新生成</span>
               <IconButton name="close" label="取消修改" onClick={onCancelEdit} />
             </div>
           )}
@@ -110,17 +110,17 @@ export function Composer(props: Props) {
               <div>
                 <span>
                   {referenceState.status === 'changed'
-                    ? '依据已改变'
+                    ? '原文已修改'
                     : referenceState.status === 'missing'
-                      ? '来源已删'
-                      : '这一段'}
+                      ? '原文已删除'
+                      : '引用'}
                 </span>
                 <p>{reference.quote}</p>
               </div>
               {referenceState.status === 'resolved' && (
                 <IconButton
                   name="source"
-                  label="回到原话"
+                  label="定位到原文"
                   onClick={() => onLocate(referenceState.message.id)}
                 />
               )}
@@ -136,7 +136,7 @@ export function Composer(props: Props) {
             ref={area}
             rows={1}
             value={value}
-            placeholder={streaming ? '在想…' : '说一句'}
+            placeholder={streaming ? '正在思考…' : '说一句'}
             onChange={(e) => onChange(e.target.value)}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}

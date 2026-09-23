@@ -50,7 +50,7 @@ function voiceStyle(confidence?: number): CSSProperties {
 /** 一轮之后地基里落下了哪几条：只给编号，不说话。定下的实，松动的虚；接替了旧条目的，后面跟一个上标的旧编号，和地基里同一种写法。编号点过去就到那一条。 */
 function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: number) => void }) {
   const at = (n: number, className?: string) => (
-    <button key={`${className ?? ''}${n}`} type="button" className={className} title="在地基里看" onClick={() => onLocate(n)}>
+    <button key={`${className ?? ''}${n}`} type="button" className={className} title="在地基中查看" onClick={() => onLocate(n)}>
       {num(n)}
     </button>
   )
@@ -63,7 +63,7 @@ function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: nu
     return (
       <span key={`l${n}`} className="ct-settled-lineage">
         {at(n, className)}
-        <button type="button" className="is-from" title="在地基里看" aria-label={`由 ${num(old)} 改来`} onClick={() => onLocate(old)}>
+        <button type="button" className="is-from" title="在地基中查看" aria-label={`由第 ${old} 条修改而来`} onClick={() => onLocate(old)}>
           {num(old)}
         </button>
       </span>
@@ -82,7 +82,7 @@ function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: nu
   // 问题的增减不在这里报：还在松动那一节本身就是当前的问题。
   if (!parts.length) return null
   return (
-    <p className="ct-settled" aria-label="这一轮写进地基的条目">
+    <p className="ct-settled" aria-label="本轮写入地基的条目">
       <span className="ct-settled-label">地基</span>
       <span>{parts}</span>
     </p>
@@ -175,7 +175,7 @@ export function Thread(props: Props) {
             <article
               className={`ct-user-turn${unsettled ? ' is-unsettled' : ''}`}
               data-message-row={message.id}
-              aria-label="我的表达"
+              aria-label="我的消息"
             >
               <div
                 className={`ct-user-text${highlighted ? ' is-highlighted' : ''}${editingId === message.id ? ' is-editing' : ''}`}
@@ -184,12 +184,11 @@ export function Thread(props: Props) {
                 {message.reference && (
                   <blockquote className="ct-message-reference">
                     <span>
-                      引用 ·{' '}
                       {state.status === 'changed'
-                        ? '依据已改变'
+                        ? '引用 · 原文已修改'
                         : state.status === 'missing'
-                          ? '来源已删'
-                          : '这一段'}
+                          ? '引用 · 原文已删除'
+                          : '引用'}
                     </span>
                     <Markdown source={message.reference.quote} />
                   </blockquote>
@@ -202,7 +201,7 @@ export function Thread(props: Props) {
                     修改
                   </button>
                 )}
-                <button type="button" aria-label="引用这句话" onClick={() => quoteWhole(message)}>
+                <button type="button" aria-label="引用这条消息" onClick={() => quoteWhole(message)}>
                   引用
                 </button>
               </div>
@@ -211,7 +210,7 @@ export function Thread(props: Props) {
             <article
               className={`ct-assistant-turn${unsettled ? ' is-unsettled' : ''}`}
               data-message-row={message.id}
-              aria-label="Co-Thinker 的回应"
+              aria-label="Co-Thinker 的回复"
             >
               {message.status === 'streaming' && !message.text ? (
                 <div className="ct-thinking" role="status">
@@ -234,19 +233,19 @@ export function Thread(props: Props) {
               {message.status !== 'streaming' && (
                 // 落在这一轮的底部留白里，不压在正文最后一行上。
                 <div className="ct-voice-actions">
-                  <button type="button" aria-label="引用这段回应" onClick={() => quoteWhole(message)}>
+                  <button type="button" aria-label="引用这条回复" onClick={() => quoteWhole(message)}>
                     引用
                   </button>
                 </div>
               )}
               {message.status === 'interrupted' && (
-                <div className="ct-turn-status">已停下</div>
+                <div className="ct-turn-status">已停止</div>
               )}
               {message.status === 'failed' && (
                 <div className="ct-turn-error" role="alert">
-                  <span>{message.error ?? '这一轮没有生成成功。'}</span>
+                  <span>{message.error ?? '生成失败'}</span>
                   <button type="button" onClick={onRetry}>
-                    重试这一轮
+                    重试
                   </button>
                 </div>
               )}
@@ -272,7 +271,7 @@ export function Thread(props: Props) {
         <p className="ct-settled is-failed" role="alert">
           <span className="ct-settled-label">地基</span>
           <span>
-            没有更新{' '}
+            更新失败{' '}
             <button type="button" onClick={onRetryMemory}>
               重试
             </button>
@@ -283,7 +282,7 @@ export function Thread(props: Props) {
       {selection && (
         <div className="ct-selection-action">
           <button type="button" onClick={quoteSelection}>
-            引用这段
+            引用
           </button>
         </div>
       )}

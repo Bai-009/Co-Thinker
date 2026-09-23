@@ -76,10 +76,10 @@ describe('一段完整的操作', () => {
     const { user } = mount()
     await firstTurn(user)
 
-    const quoteButtons = screen.getAllByRole('button', { name: '引用这段回应' })
+    const quoteButtons = screen.getAllByRole('button', { name: '引用这条回复' })
     await user.click(quoteButtons[quoteButtons.length - 1])
 
-    expect(screen.getByText('这一段')).toBeInTheDocument()
+    expect(document.querySelector('.ct-quote span')).toHaveTextContent('引用')
     expect(screen.queryByText(/已确认/)).toBeNull()
     expect(screen.getByRole('button', { name: '取消引用' })).toBeInTheDocument()
   }, 20000)
@@ -100,8 +100,8 @@ describe('一段完整的操作', () => {
     // 不是弹窗：标题变成两份文稿之间的切换，Prompt 是当前那份。
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Prompt', selected: true })).toBeInTheDocument())
     expect(screen.getByRole('tab', { name: '地基' })).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText(/依据前 1 轮对话和地基/)).toBeInTheDocument(), { timeout: 8000 })
-    expect(screen.getByText(/交给 Cursor、Claude Code/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/截至第 1 轮/)).toBeInTheDocument(), { timeout: 8000 })
+    expect(screen.queryByText(/交给 Cursor、Claude Code/)).toBeNull()
 
     await user.click(screen.getByRole('button', { name: '复制' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument())
@@ -111,7 +111,7 @@ describe('一段完整的操作', () => {
     await user.click(screen.getByRole('tab', { name: '地基' }))
     expect(screen.getByRole('button', { name: 'Prompt' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Prompt' }))
-    expect(screen.getByText(/依据前 1 轮对话和地基/)).toBeInTheDocument()
+    expect(screen.getByText(/截至第 1 轮/)).toBeInTheDocument()
   }, 30000)
 
   it('后台跟上之后，这一轮定下了什么写在对话里，地基按认识状态分开说', async () => {
@@ -128,7 +128,7 @@ describe('一段完整的操作', () => {
 
     expect(screen.getByText(/城市指南那种形式我不做/)).toBeInTheDocument()
     // 没定的另立一节，用同样的墨色，靠措辞说明。
-    expect(screen.getByText('还没定')).toBeInTheDocument()
+    expect(screen.getByText('待定')).toBeInTheDocument()
     expect(screen.getByText('换成什么形式，现在没有答案。')).toBeInTheDocument()
   }, 20000)
 
@@ -142,8 +142,8 @@ describe('一段完整的操作', () => {
     await user.click(screen.getByRole('button', { name: '01' }))
     expect(document.querySelector('[data-claim="1"]')).toHaveClass('is-highlighted')
 
-    await user.click(screen.getByRole('button', { name: '回到第 1 条的原话' }))
-    const mine = screen.getByLabelText('我的表达')
+    await user.click(screen.getByRole('button', { name: '定位到第 1 条的原文' }))
+    const mine = screen.getByLabelText('我的消息')
     expect(mine.querySelector('.ct-user-text')).toHaveClass('is-highlighted')
   }, 20000)
 })

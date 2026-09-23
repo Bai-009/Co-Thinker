@@ -66,10 +66,15 @@ body::after {
 :where(.ct-app, .ct-dialog) button:disabled { cursor: not-allowed; }
 .ct-app :focus-visible, .ct-dialog :focus-visible { outline: 1px solid var(--ct-focus); outline-offset: 3px; border-radius: 2px; }
 .ct-app ::selection, .ct-dialog ::selection { background: rgba(23, 24, 26, 0.12); }
-.ct-app textarea, .ct-sheet-scroll, .ct-conversations, .ct-markdown pre, .ct-markdown table { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.ct-app textarea, .ct-markdown pre, .ct-markdown table { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .ct-app ::-webkit-scrollbar, .ct-dialog ::-webkit-scrollbar { width: 4px; height: 4px; }
 .ct-app ::-webkit-scrollbar-track, .ct-dialog ::-webkit-scrollbar-track { background: transparent; }
 .ct-app ::-webkit-scrollbar-thumb, .ct-dialog ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 2px; }
+/* 地基、Prompt 和对话列表：滚动条平时不露面，滚动时浮出来，停下一会儿再淡掉（is-scrolling 由 main.tsx 挂上）。 */
+.ct-sheet-scroll, .ct-conversations { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 600ms var(--ease-out); }
+.ct-sheet-scroll.is-scrolling, .ct-conversations.is-scrolling { scrollbar-color: var(--line-strong) transparent; transition-duration: 160ms; }
+.ct-sheet-scroll::-webkit-scrollbar-thumb, .ct-conversations::-webkit-scrollbar-thumb { background: transparent; }
+.ct-sheet-scroll.is-scrolling::-webkit-scrollbar-thumb, .ct-conversations.is-scrolling::-webkit-scrollbar-thumb { background: var(--line-strong); }
 
 /* 顶栏：左边是署名，右边是旁注 */
 .ct-masthead { grid-area: head; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-8); gap: var(--space-4); }
@@ -242,9 +247,7 @@ button.ct-ground-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-ground-item:hover .ct-ground-quote, .ct-ground-item:focus-within .ct-ground-quote { opacity: 1; }
 .ct-ground-quote:hover { color: var(--ink-strong); }
 
-/* 读完地基的下一步 */
-.ct-sheet-next { display: flex; align-items: center; gap: 16px; margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line); }
-.ct-sheet-next p { font-size: var(--text-sm); line-height: 1.6; color: var(--ink-soft); }
+/* 胶囊按钮：Prompt 那张纸上的「复制」 */
 .ct-pill { display: inline-flex; flex: none; align-items: center; gap: 7px; padding: 7px 17px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--sheet); font-family: var(--ct-display); font-size: 13.5px; letter-spacing: 0.05em; color: var(--ink-strong); white-space: nowrap; transition: border-color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
 .ct-pill:hover { border-color: var(--ink-soft); background: var(--ct-hover); }
 .ct-pill.is-small { padding: 5px 14px 5px 12px; font-size: 13px; }
@@ -279,7 +282,6 @@ button.ct-ground-num:hover { color: var(--ink-strong); text-decoration: underlin
 .ct-prompt-doc.is-fresh .ct-markdown > :nth-child(9) { animation-delay: 400ms; }
 .ct-prompt-doc.is-fresh .ct-markdown > :nth-child(n + 10) { animation-delay: 450ms; }
 @keyframes ct-crystal { from { opacity: 0; filter: blur(3px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: none; } }
-.ct-prompt-foot { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); font-size: var(--text-sm); line-height: 1.6; color: var(--ink-soft); }
 .ct-crystallizing { display: flex; align-items: center; gap: 12px; font-family: var(--ct-display); font-size: 14px; letter-spacing: 0.04em; color: var(--ink-soft); }
 .ct-crystallizing .ct-thinking { padding: 0; height: auto; }
 .ct-empty-note { font-family: var(--ct-display); color: var(--ink-faint); font-size: var(--text-ui); line-height: 1.7; }
@@ -405,7 +407,6 @@ button.ct-ground-num:hover { color: var(--ink-strong); text-decoration: underlin
   .ct-app.is-welcome .ct-compose-area { padding: 28px var(--space-4) 0; }
   .ct-record-dialog { margin: var(--space-2); width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
   .ct-record-dialog .ct-sheet { padding: 0 var(--space-5); }
-  .ct-sheet-next { flex-direction: column; align-items: flex-start; }
   .ct-dialog-footer > span { display: none; }
 }
 @media (hover: none) { .ct-voice-actions, .ct-user-actions, .ct-conversation > .ct-icon, .ct-ground-quote { opacity: 1; } }

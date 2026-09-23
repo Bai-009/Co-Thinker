@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveReference } from '../domain/reference'
-import { contentForServer, fingerprint, parseAssistant, parseClaims, readSse, toMessages } from './httpTransport'
+import { contentForServer, fingerprint, openItems, parseAssistant, parseClaims, readSse, toMessages } from './httpTransport'
 
 describe('服务端格式 → 领域', () => {
   it('多段浮现拆成正文，把握取平均，中断标记不留在正文里', () => {
@@ -28,6 +28,14 @@ describe('服务端格式 → 领域', () => {
     expect(claims[1]).toMatchObject({ status: 'superseded', supersededBy: 'c3', text: '用 AI 边写边学，工具用 Cursor。', note: '明确了顺序' })
     expect(claims[3].note).toBeUndefined()
     expect(claims[3]).toMatchObject({ status: 'confirmed', text: '先做前端原型再补后端，工具用 Cursor。' })
+  })
+
+  it('待定的条目按分号分开，末尾的「还没定」「还没选」不再重复', () => {
+    expect(openItems(['读者是谁，还没定', '用 Flask 还是 FastAPI，还没选；每页嵌一个沙盒，还没定。', null])).toEqual([
+      '读者是谁',
+      '用 Flask 还是 FastAPI',
+      '每页嵌一个沙盒',
+    ])
   })
 
   it('指纹：同文同号，改一字就变', () => {
