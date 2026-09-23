@@ -136,7 +136,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       }
     }
   }, [blank])
-  useLayoutEffect(() => {
+  const measure = () => {
     const main = mainRef.current
     const composer = main?.querySelector('.ct-composer')
     if (!main || !composer) return
@@ -145,7 +145,37 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       empty: main.querySelector('.ct-empty:not(.is-leaving)')?.getBoundingClientRect() ?? null,
       main: main.getBoundingClientRect(),
     }
-  })
+  }
+  useLayoutEffect(() => measure())
+
+  // 新建对话：对话和地基先淡出，地基那一栏照原来的过渡收起，再回到首屏，而不是一帧就没了。
+  // 新对话开始时地基是关着的，不会在第一句之后自己弹出来。
+  const [clearing, setClearing] = useState(false)
+  const newSession = useRef(actions.newSession)
+  newSession.current = actions.newSession
+  const startNew = () => {
+    if (clearing) return
+    setTrack(null)
+    if (blank || !canAnimate()) {
+      void actions.newSession()
+      return
+    }
+    setClearing(true)
+  }
+  // 淡出真正开始以后再计时：长的对话重画一遍要一会儿，从点击算起的话，淡出会被截短。
+  // 新建之前再量一次输入框：淡出的这段时间里地基那一栏收起，输入框挪了位置，按点击时量的位置滑，会先跳回去。
+  useEffect(() => {
+    if (!clearing) return
+    const t = window.setTimeout(() => {
+      measure()
+      void newSession.current().finally(() => setClearing(false))
+    }, 380)
+    return () => window.clearTimeout(t)
+  }, [clearing])
+  // 首屏一出来就撤掉淡出，免得新的一屏也是透明的
+  useLayoutEffect(() => {
+    if (blank) setClearing(false)
+  }, [blank])
 
   const closeTrack = wide ? undefined : () => setTrack(null)
   const sheet =
@@ -183,7 +213,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         setNavDrawer(false)
       }}
       onNew={() => {
-        void actions.newSession()
+        startNew()
         setNavDrawer(false)
       }}
       onDelete={(id) => setDeleteId(id)}
@@ -223,7 +253,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
 
   return (
     <div
-      className={`ct-app${showNav ? ' has-nav' : ''}${showRecords && wide ? ' has-records' : ''}${blank ? ' is-welcome' : ''}`}
+      className={`ct-app${showNav ? ' has-nav' : ''}${showRecords && wide ? ' has-records' : ''}${blank ? ' is-welcome' : ''}${clearing ? ' is-clearing' : ''}`}
     >
       {roomy && (
         <aside className="ct-nav" aria-hidden={!navPinned}>
@@ -239,7 +269,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           // 边栏收起时顶栏左上只留两个图标；名字住在边栏里，不跟着跳到顶栏来撑场面。
           <div className="ct-masthead-brand">
             {navToggle}
-            {!blank && <IconButton name="plus" label="新建对话" onClick={() => void actions.newSession()} />}
+            {!blank && <IconButton name="plus" label="新建对话" onClick={startNew} />}
           </div>
         )}
         {hasMessages && (
