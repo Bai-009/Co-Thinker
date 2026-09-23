@@ -271,3 +271,97 @@ class TestStreamParser:
         starts = [e for e in events if e.kind == "block_start" and e.block == "voice"]
         assert len(starts) == 1
         assert starts[0].index == 2  # offset 2 + voice_count 1 - 1
+
+    def test_unclosed_block_ends_at_next_block(self):
+        """漏了 [/FOUNDATION_NARRATIVE]：下一块的开头就是这一块的结尾，后面各块照常读出来。
+        形状取自 2026-09-23 被退回三次的真实输出。整段喂、逐字喂、七个字一喂，结果一样。"""
+        text = (
+            "[FOUNDATION_CHANGE]append[/FOUNDATION_CHANGE]\n\n\n\n\n"
+            "[FOUNDATION_NARRATIVE]\n\n我们定下第一个页面讲变量。\n\n\n\n\n"
+            "[FOUNDATION]\n\n1. 第一条。\n\n2. 第二条。\n\n[/FOUNDATION]\n\n"
+            "[PLAN][/PLAN]\n\n"
+            "[SCRATCHPAD]\n\ncore_question: 停在哪一层\n\n[/SCRATCHPAD]\n\n"
+            "[SENSE]\ncertainty: 0.6\nresonance: 0.5\n[/SENSE]"
+        )
+        for size in (len(text), 1, 7):
+            p = StreamParser()
+            events = []
+            for i in range(0, len(text), size):
+                events.extend(p.feed(text[i : i + size]))
+            events.extend(p.flush())
+            narrative = "".join(e.content for e in events if e.block == "narrative" and e.kind == "block_delta")
+            foundation = "".join(e.content for e in events if e.block == "foundation" and e.kind == "block_delta")
+            assert narrative.strip() == "我们定下第一个页面讲变量。"
+            assert foundation.strip() == "1. 第一条。\n\n2. 第二条。"
+            assert {"narrative", "foundation", "scratchpad"} <= p.seen_blocks
+            assert p.plan_seen and p.plan_buf == ""
+            assert p.change_buf.strip() == "append"
+            assert p.scratchpad_buf.strip() == "core_question: 停在哪一层"
+            assert parse_sense_block(p.sense_buf) == {"certainty": 0.6, "resonance": 0.5}
+
+    def test_voice_is_not_cut_by_block_openers(self):
+        """前台的 [VOICE] 不走这条：正文里出现 [PLAN] 字样，照原样留在浮现里。"""
+        p = StreamParser()
+        events = list(p.feed("[VOICE][CONF]0.5[/CONF]先别急着写 [PLAN] 这一块[/VOICE]"))
+        events.extend(p.flush())
+        voice = "".join(e.content for e in events if e.block == "voice" and e.kind == "block_delta")
+        assert voice == "先别急着写 [PLAN] 这一块"
+        assert not p.plan_seen
+
+
+# --- 漏写收尾标记时的宽容解析 --------------------------------------------
+
+_REWRITER_MISSING_NARRATIVE_CLOSE = (
+    "[FOUNDATION_CHANGE]append[/FOUNDATION_CHANGE]\n\n"
+    "[FOUNDATION_NARRATIVE]\n第一个页面定下来了，讲变量。还没定的是从哪个现象开。\n\n"
+    "[FOUNDATION]\n1. 做一个 Python 网站，讲原理，不讲语法。\n2. 第一个页面讲变量。\n[/FOUNDATION]\n\n"
+    "[PLAN][/PLAN]\n\n"
+    "[SCRATCHPAD]\ncore_question: 第一个页面从哪个现象开\n[/SCRATCHPAD]\n\n"
+    "[SENSE]\ncertainty: 0.6\nresonance: 0.7\n[/SENSE]"
+)
+
+
+def _run(text: str, size: int):
+    parser = StreamParser()
+    foundation, narrative = "", ""
+    for i in range(0, len(text), size):
+        for ev in parser.feed(text[i:i + size]):
+            if ev.kind == "block_delta" and ev.block == "foundation":
+                foundation += ev.content
+            elif ev.kind == "block_delta" and ev.block == "narrative":
+                narrative += ev.content
+    for ev in parser.flush():
+        if ev.kind == "block_delta" and ev.block == "foundation":
+            foundation += ev.content
+        elif ev.kind == "block_delta" and ev.block == "narrative":
+            narrative += ev.content
+    return parser, foundation.strip(), narrative.strip()
+
+
+class TestImpliedClose:
+    @pytest.mark.parametrize("size", [1, 3, 7, 50, 10_000])
+    def test_missing_narrative_close_does_not_swallow_the_rest(self, size):
+        parser, foundation, narrative = _run(_REWRITER_MISSING_NARRATIVE_CLOSE, size)
+        assert {"foundation", "narrative", "scratchpad"} <= parser.seen_blocks
+        assert narrative == "第一个页面定下来了，讲变量。还没定的是从哪个现象开。"
+        assert foundation.splitlines() == ["1. 做一个 Python 网站，讲原理，不讲语法。", "2. 第一个页面讲变量。"]
+        assert parser.scratchpad_buf.strip() == "core_question: 第一个页面从哪个现象开"
+        assert parser.plan_seen and parser.plan_buf == ""
+        assert parse_sense_block(parser.sense_buf) == {"certainty": 0.6, "resonance": 0.7}
+        assert parser.change_buf.strip() == "append"
+
+    @pytest.mark.parametrize("size", [1, 5, 10_000])
+    def test_fully_tagged_output_still_parses(self, size):
+        text = _REWRITER_MISSING_NARRATIVE_CLOSE.replace(
+            "从哪个现象开。\n\n[FOUNDATION]", "从哪个现象开。\n[/FOUNDATION_NARRATIVE]\n\n[FOUNDATION]"
+        )
+        parser, foundation, narrative = _run(text, size)
+        assert {"foundation", "narrative", "scratchpad"} <= parser.seen_blocks
+        assert narrative == "第一个页面定下来了，讲变量。还没定的是从哪个现象开。"
+        assert len(foundation.splitlines()) == 2
+
+    def test_stream_ending_inside_scratchpad_keeps_what_arrived(self):
+        text = _REWRITER_MISSING_NARRATIVE_CLOSE.split("[/SCRATCHPAD]")[0]
+        parser, _, _ = _run(text, 4)
+        assert "scratchpad" in parser.seen_blocks
+        assert parser.scratchpad_buf.strip() == "core_question: 第一个页面从哪个现象开"

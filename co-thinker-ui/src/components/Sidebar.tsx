@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import { IconButton } from './Dialog'
 import type { SessionSummary } from '../domain/types'
 
@@ -44,14 +45,12 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
   const groups = groupSessions(sessions)
   return (
     <div className="ct-sidebar">
-      <button type="button" className="ct-new" onClick={onNew} title="开始一段新的对话">
-        <span className="ct-new-plus" aria-hidden="true">
-          +
-        </span>
+      <button type="button" className="ct-new" onClick={onNew}>
+        <Icon name="plus" />
         <span>新建对话</span>
       </button>
 
-      <nav className="ct-conversations" aria-label="最近的思考">
+      <nav className="ct-conversations" aria-label="最近对话">
         {groups.map((g) => (
           <section key={g.label} className="ct-nav-group">
             <h3>{g.label}</h3>
@@ -64,14 +63,13 @@ export function Sidebar({ sessions, currentId, onSelect, onNew, onDelete }: Prop
                   onClick={() => onSelect(s.id)}
                 >
                   <span>{s.title}</span>
-                  <small>{s.messageCount} 句</small>
                 </button>
-                <IconButton name="close" label={`删除「${s.title}」`} onClick={() => onDelete(s.id)} />
+                <IconButton name="trash" label={`删除「${s.title}」`} onClick={() => onDelete(s.id)} />
               </div>
             ))}
           </section>
         ))}
-        {sessions.length === 0 && <p className="ct-nav-empty">还没有对话——发一句开始。</p>}
+        {sessions.length === 0 && <p className="ct-nav-empty">暂无对话</p>}
       </nav>
     </div>
   )

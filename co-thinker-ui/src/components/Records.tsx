@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconButton } from './Dialog'
 import type { Groundwork } from '../domain/types'
+import { arrangeClaims } from '../domain/groundwork'
+import { Lineage } from './Lineage'
+import { paragraphs } from '../domain/prose'
+import { SheetHead, when, type SheetView } from './Sheet'
 
 interface Props {
   groundwork: Groundwork | null
   updating: boolean
-  onClose: () => void
+  /** 地基覆盖到人说的第几句。 */
+  coveredTurns: number
+  views: SheetView[]
+  onSwitch: (view: SheetView) => void
+  /** 只有窄屏的那层需要自己的关闭；宽屏并排时由顶栏的「地基」收放。 */
+  onClose?: () => void
   onQuoteClaim: (text: string) => void
   onLocate: (messageId: string) => void
   sourceExists: (messageId: string) => boolean
@@ -16,7 +24,7 @@ interface Props {
 const num = (n: number) => String(n).padStart(2, '0')
 
 export function Records(props: Props) {
-  const { groundwork, updating, onClose, onQuoteClaim, onLocate, sourceExists, locateRequest } = props
+  const { groundwork, updating, coveredTurns, views, onSwitch, onClose, onQuoteClaim, onLocate, sourceExists, locateRequest } = props
   const scroll = useRef<HTMLDivElement>(null)
   const [flash, setFlash] = useState<number | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>()
@@ -31,75 +39,85 @@ export function Records(props: Props) {
     timer.current = setTimeout(() => setFlash(null), 1600)
   }, [locateRequest])
 
-  const claims = groundwork?.claims ?? []
+  const arranged = arrangeClaims(groundwork?.claims ?? [])
+  const settled = arranged.filter(({ claim }) => claim.status !== 'tentative')
+  const tentative = arranged.filter(({ claim }) => claim.status === 'tentative')
   const open = groundwork?.open ?? []
-  const position = new Map(claims.map((c, i) => [c.id, i + 1]))
+
+  const meta = updating ? '正在更新' : groundwork ? `截至第 ${coveredTurns} 轮 · ${when(groundwork.updatedAt)}更新` : undefined
 
   return (
-    <div className="ct-records-content">
-      <div className="ct-records-head">
-        <h2>
-          <span className={`ct-status-dot${updating ? ' is-updating' : ''}`} aria-hidden="true" />
-          地基
-        </h2>
-        <IconButton name="close" label="收起地基" onClick={onClose} />
-      </div>
+    <div className="ct-sheet ct-records-content">
+      <SheetHead views={views} current="records" onSwitch={onSwitch} meta={meta} busy={updating} onClose={onClose} />
 
-      <div className="ct-records-scroll" ref={scroll}>
+      <div className="ct-sheet-scroll" ref={scroll}>
         {groundwork ? (
-          <p className="ct-record-summary">{groundwork.prose}</p>
+          <div className="ct-ground-prose">
+            {paragraphs(groundwork.prose).map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
         ) : (
-          <p className="ct-empty-note">还没有沉淀出共识——先继续聊。</p>
+          // 头一版还在写的时候，页头已经说了「正在更新」，这里不再重复。
+          !updating && <p className="ct-empty-note">暂无内容</p>
         )}
 
-        {claims.length > 0 && (
-          <section className="ct-record-section">
+        {settled.length > 0 && (
+          <section className="ct-ground-section" aria-label="共识">
             <h3>共识</h3>
-            <ol className="ct-record-list">
-              {claims.map((claim, i) => {
-                const n = i + 1
+            <ol className="ct-ground-list">
+              {settled.map(({ claim, n, origins }) => {
+                // 有来路的一条：平时只见现在的说法，停在编号或句末上标上，原地变回原来的说法。
+                if (origins.length > 0 && claim.status !== 'superseded') {
+                  return (
+                    <Lineage
+                      key={`${claim.id}>${origins[0].claim.id}`}
+                      claim={claim}
+                      n={n}
+                      origin={origins[0]}
+                      highlighted={flash === n || flash === origins[0].n}
+                      updatedAt={groundwork?.updatedAt ?? 0}
+                      onQuote={onQuoteClaim}
+                    />
+                  )
+                }
                 const source = claim.sourceIds.find(sourceExists)
-                const by = claim.supersededBy ? position.get(claim.supersededBy) : undefined
-                const className = [
-                  claim.status === 'tentative' && 'is-tentative',
-                  claim.status === 'superseded' && 'is-superseded',
-                  flash === n && 'is-highlighted',
-                ]
-                  .filter(Boolean)
-                  .join(' ')
                 return (
-                  <li key={claim.id} className={className} data-claim={n}>
+                  <li key={claim.id} className={`ct-ground-item${flash === n ? ' is-highlighted' : ''}`} data-claim={n}>
                     {source ? (
                       <button
                         type="button"
-                        className="ct-record-num"
-                        aria-label={`回到第 ${n} 条的原话`}
-                        title="原话"
+                        className="ct-ground-num"
+                        aria-label={`定位到第 ${n} 条的原文`}
+                        title="定位到原文"
                         onClick={() => onLocate(source)}
                       >
                         {num(n)}
                       </button>
                     ) : (
-                      <span className="ct-record-num">{num(n)}</span>
+                      <span className="ct-ground-num">{num(n)}</span>
                     )}
-                    {claim.status === 'superseded' ? (
-                      <span className="ct-record-text">
-                        <s>{claim.text}</s>
-                        {by && <span className="ct-record-note">被 {num(by)} 取代</span>}
-                      </span>
-                    ) : (
-                      <span className="ct-record-text">
-                        {claim.text}
-                        {claim.status === 'tentative' && <span className="ct-record-note">松动</span>}
-                      </span>
-                    )}
+                    <div className="ct-ground-body">
+                      <p className="ct-ground-text">{claim.text}</p>
+                      {claim.status === 'superseded' && claim.note && <p className="ct-ground-why">{claim.note}</p>}
+                      {origins.length > 0 && (
+                        <div className="ct-ground-origins">
+                          {origins.map((o) => (
+                            <p
+                              key={o.claim.id}
+                              className={`ct-ground-origin${flash === o.n ? ' is-highlighted' : ''}`}
+                              data-claim={o.n}
+                            >
+                              <span className="ct-ground-origin-label">原 {num(o.n)}</span>
+                              <span>{o.claim.text}</span>
+                              {o.claim.note && <span className="ct-ground-why">{o.claim.note}</span>}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {claim.status !== 'superseded' && (
-                      <button
-                        type="button"
-                        className="ct-record-quote"
-                        aria-label="引用这条共识"
-                        onClick={() => onQuoteClaim(claim.text)}
-                      >
+                      <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(claim.text)}>
                         引用
                       </button>
                     )}
@@ -110,22 +128,34 @@ export function Records(props: Props) {
           </section>
         )}
 
-        {open.length > 0 && (
-          <section className="ct-record-section">
-            <h3>还在松动</h3>
-            {open.map((q) => (
-              <button key={q} type="button" className="ct-question" onClick={() => onQuoteClaim(q)}>
-                <span>{q}</span>
-                <span className="ct-record-quote" aria-hidden="true">
-                  引用
-                </span>
-              </button>
-            ))}
+        {(tentative.length > 0 || open.length > 0) && (
+          <section className="ct-ground-section" aria-label="待定">
+            <h3>待定</h3>
+            <ul className="ct-ground-list is-open">
+              {tentative.map(({ claim, n }) => (
+                <li key={claim.id} className={`ct-ground-item${flash === n ? ' is-highlighted' : ''}`} data-claim={n}>
+                  <span className="ct-ground-num">{num(n)}</span>
+                  <div className="ct-ground-body">
+                    <p className="ct-ground-text">{claim.text}</p>
+                  </div>
+                  <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(claim.text)}>
+                    引用
+                  </button>
+                </li>
+              ))}
+              {open.map((q) => (
+                <li key={q} className="ct-ground-item">
+                  <span className="ct-ground-mark" aria-hidden="true" />
+                  <div className="ct-ground-body">
+                    <p className="ct-ground-text">{q}</p>
+                  </div>
+                  <button type="button" className="ct-ground-quote" aria-label="引用这个问题" onClick={() => onQuoteClaim(q)}>
+                    引用
+                  </button>
+                </li>
+              ))}
+            </ul>
           </section>
-        )}
-
-        {groundwork && (
-          <p className="ct-record-foot">每轮回看时自动更新——按共识的累积长，不用管理。</p>
         )}
       </div>
     </div>

@@ -47,30 +47,44 @@ function voiceStyle(confidence?: number): CSSProperties {
   } as CSSProperties
 }
 
-/** 一轮之后地基定了什么、添了什么。编号点过去就到那一条。 */
+/** 一轮之后地基里落下了哪几条：只给编号，不说话。定下的实，松动的虚；接替了旧条目的，后面跟一个上标的旧编号，和地基里同一种写法。编号点过去就到那一条。 */
 function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: number) => void }) {
-  const at = (n: number) => (
-    <button key={n} type="button" title="在地基里看" onClick={() => onLocate(n)}>
+  const at = (n: number, className?: string) => (
+    <button key={`${className ?? ''}${n}`} type="button" className={className} title="在地基中查看" onClick={() => onLocate(n)}>
       {num(n)}
     </button>
   )
-  const list = (ns: number[]) => ns.flatMap((n, i) => (i ? ['、', at(n)] : [at(n)]))
-  const parts: ReactNode[] = []
-  if (delta.confirmed.length) parts.push(<span key="c">定下 {list(delta.confirmed)}</span>)
-  if (delta.tentative.length) parts.push(<span key="t">{list(delta.tentative)} 松动</span>)
-  delta.superseded.forEach(([from, to]) =>
-    parts.push(
-      <span key={`s${from}`}>
-        {at(from)} 被 {to ? at(to) : '后来的说法'} 取代
-      </span>,
-    ),
-  )
+  // 新编号接替了哪一条旧编号。一条接替了几条的，和地基里一样只标最近的那条。
+  const from = new Map<number, number>()
+  for (const [old, next] of delta.superseded) if (next) from.set(next, old)
+  const withFrom = (n: number, className?: string) => {
+    const old = from.get(n)
+    if (old === undefined) return at(n, className)
+    return (
+      <span key={`l${n}`} className="ct-settled-lineage">
+        {at(n, className)}
+        <button type="button" className="is-from" title="在地基中查看" aria-label={`由第 ${old} 条修改而来`} onClick={() => onLocate(old)}>
+          {num(old)}
+        </button>
+      </span>
+    )
+  }
+  const listed = new Set([...delta.confirmed, ...delta.tentative])
+  const replaced = new Set(delta.superseded.map(([old]) => old))
+  // 接替者早就在地基里、这一轮没有新落下的，也列一次；找不到接替者的旧编号淡一些。
+  const extra = [...new Set(delta.superseded.map(([, next]) => next))].filter((n) => n && !listed.has(n) && !replaced.has(n))
+  const parts: ReactNode[] = [
+    ...delta.confirmed.map((n) => withFrom(n)),
+    ...delta.tentative.map((n) => withFrom(n, 'is-tentative')),
+    ...extra.map((n) => withFrom(n)),
+    ...delta.superseded.filter(([, next]) => !next).map(([old]) => at(old, 'is-faded')),
+  ]
   // 问题的增减不在这里报：还在松动那一节本身就是当前的问题。
   if (!parts.length) return null
   return (
-    <p className="ct-settled">
+    <p className="ct-settled" aria-label="本轮写入地基的条目">
       <span className="ct-settled-label">地基</span>
-      <span>{parts.flatMap((p, i) => (i ? [' · ', p] : [p]))}</span>
+      <span>{parts}</span>
     </p>
   )
 }
@@ -149,15 +163,20 @@ export function Thread(props: Props) {
       onKeyUp={readSelection}
       onTouchEnd={readSelection}
     >
-      {messages.map((message, index) => {
+      {messages.map((message) => {
         const state = resolveReference(message.reference, messages, sessionId)
         const highlighted = flash === message.id
         const delta = settled.get(message.sequence)
-        const atBoundary = boundary === message.sequence && index < messages.length - 1
+        // 地基还没覆盖到的话，墨色浅一层；落进地基那一刻再深回来。不用文字说。
+        const unsettled = boundary == null || message.sequence > boundary
 
         const turn =
           message.role === 'user' ? (
-            <article className="ct-user-turn" data-message-row={message.id} aria-label="我的表达">
+            <article
+              className={`ct-user-turn${unsettled ? ' is-unsettled' : ''}`}
+              data-message-row={message.id}
+              aria-label="我的消息"
+            >
               <div
                 className={`ct-user-text${highlighted ? ' is-highlighted' : ''}${editingId === message.id ? ' is-editing' : ''}`}
                 data-message-root={message.id}
@@ -165,12 +184,11 @@ export function Thread(props: Props) {
                 {message.reference && (
                   <blockquote className="ct-message-reference">
                     <span>
-                      引用 ·{' '}
                       {state.status === 'changed'
-                        ? '依据已改变'
+                        ? '引用 · 原文已修改'
                         : state.status === 'missing'
-                          ? '来源已删'
-                          : '这一段'}
+                          ? '引用 · 原文已删除'
+                          : '引用'}
                     </span>
                     <Markdown source={message.reference.quote} />
                   </blockquote>
@@ -183,16 +201,16 @@ export function Thread(props: Props) {
                     修改
                   </button>
                 )}
-                <button type="button" aria-label="引用这句话" onClick={() => quoteWhole(message)}>
+                <button type="button" aria-label="引用这条消息" onClick={() => quoteWhole(message)}>
                   引用
                 </button>
               </div>
             </article>
           ) : (
             <article
-              className="ct-assistant-turn"
+              className={`ct-assistant-turn${unsettled ? ' is-unsettled' : ''}`}
               data-message-row={message.id}
-              aria-label="Co-Thinker 的回应"
+              aria-label="Co-Thinker 的回复"
             >
               {message.status === 'streaming' && !message.text ? (
                 <div className="ct-thinking" role="status">
@@ -215,19 +233,19 @@ export function Thread(props: Props) {
               {message.status !== 'streaming' && (
                 // 落在这一轮的底部留白里，不压在正文最后一行上。
                 <div className="ct-voice-actions">
-                  <button type="button" aria-label="引用这段回应" onClick={() => quoteWhole(message)}>
+                  <button type="button" aria-label="引用这条回复" onClick={() => quoteWhole(message)}>
                     引用
                   </button>
                 </div>
               )}
               {message.status === 'interrupted' && (
-                <div className="ct-turn-status">已停下，可以接着说。</div>
+                <div className="ct-turn-status">已停止</div>
               )}
               {message.status === 'failed' && (
                 <div className="ct-turn-error" role="alert">
-                  <span>{message.error ?? '这一轮没有生成成功。'}</span>
+                  <span>{message.error ?? '生成失败'}</span>
                   <button type="button" onClick={onRetry}>
-                    重试这一轮
+                    重试
                   </button>
                 </div>
               )}
@@ -239,23 +257,6 @@ export function Thread(props: Props) {
           <Fragment key={message.id}>
             {turn}
             {message.role === 'user' && delta && <Settled delta={delta} onLocate={onLocateClaim} />}
-            {atBoundary && (
-              <div
-                className={`ct-boundary${memory.state === 'failed' ? ' is-failed' : ''}`}
-                role="status"
-              >
-                {memory.state === 'failed' ? (
-                  <>
-                    <span>这一轮没有沉淀成功</span>
-                    <button type="button" onClick={onRetryMemory}>
-                      重试
-                    </button>
-                  </>
-                ) : (
-                  <span>沉淀到这里</span>
-                )}
-              </div>
-            )}
           </Fragment>
         )
       })}
@@ -263,14 +264,14 @@ export function Thread(props: Props) {
       {memory.state === 'updating' && (
         <p className="ct-settled is-updating" role="status">
           <span className="ct-status-dot" />
-          <span>正在沉淀…</span>
+          <span className="ct-sr-only">地基更新中</span>
         </p>
       )}
-      {memory.state === 'failed' && boundary == null && (
+      {memory.state === 'failed' && (
         <p className="ct-settled is-failed" role="alert">
           <span className="ct-settled-label">地基</span>
           <span>
-            这一轮没有沉淀成功{' '}
+            更新失败{' '}
             <button type="button" onClick={onRetryMemory}>
               重试
             </button>
@@ -281,7 +282,7 @@ export function Thread(props: Props) {
       {selection && (
         <div className="ct-selection-action">
           <button type="button" onClick={quoteSelection}>
-            引用这段
+            引用
           </button>
         </div>
       )}

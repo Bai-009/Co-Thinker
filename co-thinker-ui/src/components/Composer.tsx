@@ -36,19 +36,34 @@ export function Composer(props: Props) {
     onLocate,
   } = props
   const area = useRef<HTMLTextAreaElement>(null)
+  const mirror = useRef<HTMLDivElement>(null)
   // 组合期间的 Enter 是选字。
   const [composing, setComposing] = useState(false)
 
-  // 上限交给 CSS 的 max-height，避免两处各写一个数字。
+  // 高度用一个同字体同宽度的影子来量，不信 scrollHeight——各家浏览器对空 textarea 的算法不一样。
+  // 空的时候一行高；上限交给 CSS 的 max-height。
   useLayoutEffect(() => {
     const el = area.current
-    if (!el) return
+    const shadow = mirror.current
+    if (!el || !shadow) return
     const fit = () => {
-      el.style.height = 'auto'
-      const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity
-      const needed = el.scrollHeight
+      if (!el.value) {
+        el.style.height = ''
+        el.style.overflowY = 'hidden'
+        return
+      }
+      const cs = getComputedStyle(el)
+      shadow.style.fontFamily = cs.fontFamily
+      shadow.style.fontSize = cs.fontSize
+      shadow.style.fontWeight = cs.fontWeight
+      shadow.style.lineHeight = cs.lineHeight
+      shadow.style.letterSpacing = cs.letterSpacing
+      shadow.style.width = `${el.clientWidth}px`
+      shadow.textContent = el.value.endsWith('\n') ? `${el.value} ` : el.value
+      const needed = Math.ceil(shadow.getBoundingClientRect().height)
+      if (!needed) return
+      const max = parseFloat(cs.maxHeight) || Infinity
       el.style.height = `${Math.min(needed, max)}px`
-      // 内容高度取整会多出 1px，macOS 常显滚动条时会露出一截；没到上限就不给滚动条。
       el.style.overflowY = needed > max ? 'auto' : 'hidden'
     }
     fit()
@@ -69,7 +84,7 @@ export function Composer(props: Props) {
     onSend()
   }
 
-  const sendLabel = streaming ? '发送并打断当前回复' : editing ? '保存并重新思考' : '发送'
+  const sendLabel = streaming ? '停止当前回复并发送' : editing ? '保存并重新生成' : '发送'
 
   return (
     <footer className="ct-compose-area">
@@ -84,7 +99,7 @@ export function Composer(props: Props) {
           {editing && (
             <div className="ct-edit-banner">
               <Icon name="edit" size={14} />
-              <span>修改上一条 · 后续回复与地基会随之重建</span>
+              <span>正在修改上一条 · 之后的回复和地基会重新生成</span>
               <IconButton name="close" label="取消修改" onClick={onCancelEdit} />
             </div>
           )}
@@ -95,17 +110,17 @@ export function Composer(props: Props) {
               <div>
                 <span>
                   {referenceState.status === 'changed'
-                    ? '依据已改变'
+                    ? '原文已修改'
                     : referenceState.status === 'missing'
-                      ? '来源已删'
-                      : '这一段'}
+                      ? '原文已删除'
+                      : '引用'}
                 </span>
                 <p>{reference.quote}</p>
               </div>
               {referenceState.status === 'resolved' && (
                 <IconButton
                   name="source"
-                  label="回到原话"
+                  label="定位到原文"
                   onClick={() => onLocate(referenceState.message.id)}
                 />
               )}
@@ -121,7 +136,7 @@ export function Composer(props: Props) {
             ref={area}
             rows={1}
             value={value}
-            placeholder={streaming ? '在想…' : '说一句'}
+            placeholder={streaming ? '正在思考…' : '说一句'}
             onChange={(e) => onChange(e.target.value)}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
@@ -130,14 +145,7 @@ export function Composer(props: Props) {
           />
         </div>
 
-        <div className="ct-composer-aside">
-          {streaming && (
-            <span className="ct-presence is-active">
-              <span />
-              正在回应 · 随时可以接话
-            </span>
-          )}
-        </div>
+        <div className="ct-composer-aside" />
 
         <div className="ct-composer-send">
           {streaming && <IconButton name="stop" label="停止回复" onClick={onCancelRun} />}
@@ -166,6 +174,7 @@ export function Composer(props: Props) {
           </button>
         </div>
       </form>
+      <div ref={mirror} className="ct-composer-mirror" aria-hidden="true" />
     </footer>
   )
 }

@@ -15,6 +15,8 @@ class Runtime:
     memory_jobs: dict = field(default_factory=dict)
     memory_error: str = ""
     memory_prefix: int = 0
+    # (纪元, 排队中最新任务的消息前缀)，用来让等待中的旧重写让位。
+    memory_newest: tuple = (0, 0)
     generating: bool = False
 
 

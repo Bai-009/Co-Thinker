@@ -188,7 +188,7 @@ export class ExampleTransport implements Transport {
     s.messages = s.messages.map((m) => {
       if (m.status !== 'streaming') return m
       touched = true
-      return { ...m, status: m.text.trim() ? 'interrupted' : 'failed', error: m.text.trim() ? undefined : '这一轮没有生成出内容。' }
+      return { ...m, status: m.text.trim() ? 'interrupted' : 'failed', error: m.text.trim() ? undefined : '生成失败' }
     })
     if (touched) this.save()
     return this.snapshot(s)
@@ -239,7 +239,7 @@ export class ExampleTransport implements Transport {
           type: 'memory_failed',
           sessionId,
           historyRevision: revision,
-          reason: '还没有可以沉淀的内容。',
+          reason: '暂无可写入地基的内容',
         })
       }
     })
@@ -272,7 +272,7 @@ export class ExampleTransport implements Transport {
         type: 'reply_failed',
         requestId: input.requestId,
         sessionId: s.id,
-        reason: '这一轮没有生成出来。你的输入已经保存，可以重试。',
+        reason: '生成失败，输入已保存。',
         snapshot: this.snapshot(s),
       }
       return
@@ -409,7 +409,7 @@ export class ExampleTransport implements Transport {
           type: 'memory_failed',
           sessionId,
           historyRevision: revision,
-          reason: '共同记录这一轮没有更新成功。讨论都在，可以重试。',
+          reason: '地基更新失败，对话已保存。',
         })
         return
       }
@@ -440,7 +440,11 @@ export class ExampleTransport implements Transport {
     })
   }
 
-  async requestBrief(req: BriefRequest, signal: AbortSignal): Promise<BriefSnapshot> {
+  async requestBrief(
+    req: BriefRequest,
+    signal: AbortSignal,
+    onDelta?: (markdown: string) => void,
+  ): Promise<BriefSnapshot> {
     const s = this.db[req.sessionId]
     if (!s) throw new Error('会话不存在')
     // 冻结在请求这一刻。
@@ -463,7 +467,7 @@ export class ExampleTransport implements Transport {
 
     const lines: string[] = []
     lines.push(`## 我想做什么`)
-    lines.push(groundwork?.prose ?? '这段讨论还没有沉淀出可以交接的判断。')
+    lines.push(groundwork?.prose ?? '暂无可交接的内容。')
     const confirmed = (groundwork?.claims ?? []).filter((c) => c.status === 'confirmed')
     const tentative = (groundwork?.claims ?? []).filter((c) => c.status === 'tentative')
     if (confirmed.length) {
@@ -484,11 +488,18 @@ export class ExampleTransport implements Transport {
     }
     if (uncovered.length) {
       lines.push(`## 新增表达，尚待核对`)
-      lines.push('请求这份文档时，下面这些话还没有被共同记录覆盖。')
       uncovered.forEach((t) => lines.push(`- ${t}`))
     }
     lines.push(`---`)
     lines.push(`示例模式：以上内容由示例脚本与前端拼出，没有经过模型综合。`)
+
+    // 像真实服务那样一段一段地到。
+    if (onDelta) {
+      for (let i = 1; i <= lines.length; i++) {
+        onDelta(lines.slice(0, i).join('\n\n'))
+        await wait(90, signal)
+      }
+    }
 
     return {
       id: req.requestId,

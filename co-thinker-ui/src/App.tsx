@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from './controller/useSession'
 import { Thread } from './components/Thread'
 import { Composer } from './components/Composer'
 import { Records } from './components/Records'
+import { PromptSheet } from './components/PromptSheet'
+import type { SheetView } from './components/Sheet'
 import { Sidebar } from './components/Sidebar'
-import { Dialog, IconButton } from './components/Dialog'
-import { Markdown } from './components/Markdown'
+import { Dialog, IconButton, canAnimate } from './components/Dialog'
 import { useScrollAnchor } from './hooks/useScrollAnchor'
 import { resolveReference } from './domain/reference'
 import { groundworkDelta, isEmptyDelta, type GroundworkDelta } from './domain/groundwork'
@@ -31,15 +32,20 @@ function useMedia(query: string) {
   return match
 }
 
+const clip = (text: string, max = 36) => (text.length > max ? `${text.slice(0, max)}…` : text)
+
 export default function App({ transport }: { transport?: Transport } = {}) {
   const s = useSession(() => transport ?? new ExampleTransport())
   const { state, draft, actions } = s
   const [locate, setLocate] = useState<{ id: string; n: number } | null>(null)
   const [claimLocate, setClaimLocate] = useState<{ n: number; k: number } | null>(null)
-  // 宽屏一开始就并排；窄屏等人来开，不上来就弹一层。
-  const [recordOpen, setRecordOpen] = useState(
-    () => typeof matchMedia === 'function' && matchMedia('(min-width: 1280px)').matches,
-  )
+  // 右边那张纸：地基，或者凝成的 Prompt；不主动打开，头几轮没什么可看的，等人来开。
+  const [track, setTrack] = useState<SheetView | null>(null)
+  const recordOpen = track !== null
+  // 收起时栏宽还在过渡，里面仍是刚才那一份，不跳回地基。
+  const lastView = useRef<SheetView>('records')
+  if (track) lastView.current = track
+  const view = track ?? lastView.current
   // 对话列表：宽屏是一栏，收放记住；窄屏是从左边推出来的抽屉。
   const [navPinned, setNavPinned] = useState(
     () => repository.read<boolean>('nav', (v): v is boolean => typeof v === 'boolean') ?? true,
@@ -68,7 +74,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   }, [])
 
   const locateClaim = useCallback((n: number) => {
-    setRecordOpen(true)
+    setTrack('records')
     setClaimLocate((prev) => ({ n, k: (prev?.k ?? 0) + 1 }))
   }, [])
 
@@ -87,22 +93,116 @@ export default function App({ transport }: { transport?: Transport } = {}) {
   const hasMessages = state.messages.length > 0
   const blank = !hasMessages
   const streaming = state.phase === 'streaming' || state.phase === 'submitting'
-  const title = state.title || '这次思考'
+  const title = state.title || '新对话'
   const brief = s.brief
-  const briefOpen = Boolean(brief.snapshot || brief.loading || brief.error)
   const showRecords = recordOpen && hasMessages
+  // 有过 Prompt（或正在凝）时，那张纸上就有两份文稿，标题变成切换。
+  const hasPrompt = Boolean(brief.snapshot || brief.loading || brief.error)
+  const views: SheetView[] = hasPrompt ? ['records', 'prompt'] : ['records']
+  const promptCurrent = Boolean(brief.snapshot) && !s.briefRelation.added && !s.briefRelation.quoteChanged
+  // 人说到第几句：地基和 Prompt 各自依据前几轮。
+  const turnsUpTo = (sequence: number) => state.messages.filter((m) => m.role === 'user' && m.sequence <= sequence).length
+  const openPrompt = () => {
+    setTrack('prompt')
+    if (!promptCurrent && !brief.loading) void actions.generateBrief()
+  }
 
-  const records = (
-    <Records
-      groundwork={state.groundwork}
-      updating={state.memory.state === 'updating'}
-      onClose={() => setRecordOpen(false)}
-      onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
-      onLocate={requestLocate}
-      sourceExists={(id) => state.messages.some((m) => m.id === id)}
-      locateRequest={claimLocate}
-    />
-  )
+  // 首屏和对话之间：输入框从中间滑到底部（或回去），标题在原地淡去，而不是跳过去。
+  const mainRef = useRef<HTMLElement>(null)
+  const lastRects = useRef<{ composer: DOMRect; empty: DOMRect | null; main: DOMRect } | null>(null)
+  const [leaving, setLeaving] = useState<{ top: number; left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main || !canAnimate()) return
+    const from = lastRects.current
+    const composer = main.querySelector<HTMLElement>('.ct-composer')
+    if (from && composer) {
+      const to = composer.getBoundingClientRect()
+      const dx = from.composer.left - to.left
+      const dy = from.composer.top - to.top
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        composer.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px)`, width: `${from.composer.width}px` },
+            { transform: 'none', width: `${to.width}px` },
+          ],
+          { duration: 560, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
+        )
+      }
+      if (!blank && from.empty) {
+        setLeaving({ top: from.empty.top - from.main.top, left: from.empty.left - from.main.left, width: from.empty.width })
+        const t = window.setTimeout(() => setLeaving(null), 400)
+        return () => window.clearTimeout(t)
+      }
+    }
+  }, [blank])
+  const measure = () => {
+    const main = mainRef.current
+    const composer = main?.querySelector('.ct-composer')
+    if (!main || !composer) return
+    lastRects.current = {
+      composer: composer.getBoundingClientRect(),
+      empty: main.querySelector('.ct-empty:not(.is-leaving)')?.getBoundingClientRect() ?? null,
+      main: main.getBoundingClientRect(),
+    }
+  }
+  useLayoutEffect(() => measure())
+
+  // 新建对话：对话和地基先淡出，地基那一栏照原来的过渡收起，再回到首屏，而不是一帧就没了。
+  // 新对话开始时地基是关着的，不会在第一句之后自己弹出来。
+  const [clearing, setClearing] = useState(false)
+  const newSession = useRef(actions.newSession)
+  newSession.current = actions.newSession
+  const startNew = () => {
+    if (clearing) return
+    setTrack(null)
+    if (blank || !canAnimate()) {
+      void actions.newSession()
+      return
+    }
+    setClearing(true)
+  }
+  // 淡出真正开始以后再计时：长的对话重画一遍要一会儿，从点击算起的话，淡出会被截短。
+  // 新建之前再量一次输入框：淡出的这段时间里地基那一栏收起，输入框挪了位置，按点击时量的位置滑，会先跳回去。
+  useEffect(() => {
+    if (!clearing) return
+    const t = window.setTimeout(() => {
+      measure()
+      void newSession.current().finally(() => setClearing(false))
+    }, 380)
+    return () => window.clearTimeout(t)
+  }, [clearing])
+  // 首屏一出来就撤掉淡出，免得新的一屏也是透明的
+  useLayoutEffect(() => {
+    if (blank) setClearing(false)
+  }, [blank])
+
+  const closeTrack = wide ? undefined : () => setTrack(null)
+  const sheet =
+    view === 'prompt' ? (
+      <PromptSheet
+        brief={brief}
+        relation={s.briefRelation}
+        coveredTurns={turnsUpTo(brief.snapshot?.cutoffSequence ?? state.messages.at(-1)?.sequence ?? -1)}
+        views={views}
+        onSwitch={setTrack}
+        onClose={closeTrack}
+        onRegenerate={() => void actions.generateBrief()}
+      />
+    ) : (
+      <Records
+        groundwork={state.groundwork}
+        updating={state.memory.state === 'updating'}
+        coveredTurns={turnsUpTo(state.groundwork?.coveredThrough ?? -1)}
+        views={views}
+        onSwitch={(v) => (v === 'prompt' ? openPrompt() : setTrack(v))}
+        onClose={closeTrack}
+        onQuoteClaim={(text) => s.setDraft({ text: draft.text ? `${draft.text}\n${text}` : text })}
+        onLocate={requestLocate}
+        sourceExists={(id) => state.messages.some((m) => m.id === id)}
+        locateRequest={claimLocate}
+      />
+    )
 
   const sidebar = (
     <Sidebar
@@ -113,7 +213,7 @@ export default function App({ transport }: { transport?: Transport } = {}) {
         setNavDrawer(false)
       }}
       onNew={() => {
-        void actions.newSession()
+        startNew()
         setNavDrawer(false)
       }}
       onDelete={(id) => setDeleteId(id)}
@@ -129,6 +229,11 @@ export default function App({ transport }: { transport?: Transport } = {}) {
     setNavPinned(next)
     repository.write('nav', next)
   }
+  // 确认删除时点名是哪一段；标题太长就截住。
+  const deleteTarget = s.sessions.find((x) => x.id === deleteId)
+  const deleteCopy = deleteTarget?.title
+    ? `「${clip(deleteTarget.title)}」及其地基将被删除，无法恢复。`
+    : '对话及其地基将被删除，无法恢复。'
   // 收放边栏的开关：边栏展开时住在边栏里，收起时才回到顶栏左上角。
   const navToggle = (
     <IconButton
@@ -138,64 +243,81 @@ export default function App({ transport }: { transport?: Transport } = {}) {
       onClick={toggleNav}
     />
   )
+  // 名字和一句话跟着边栏走：展开时在边栏头部，收起时才回到顶栏。
+  const brand = (
+    <div className="ct-brand-block">
+      <span className="ct-brand-name">Co-Thinker</span>
+      <span className="ct-brand-sub">we can know more than we can tell</span>
+    </div>
+  )
 
   return (
     <div
-      className={`ct-app${showNav ? ' has-nav' : ''}${showRecords && wide ? ' has-records' : ''}${blank ? ' is-welcome' : ''}`}
+      className={`ct-app${showNav ? ' has-nav' : ''}${showRecords && wide ? ' has-records' : ''}${blank ? ' is-welcome' : ''}${clearing ? ' is-clearing' : ''}`}
     >
-      {showNav && (
-        <aside className="ct-nav">
-          <div className="ct-nav-head">{navToggle}</div>
+      {roomy && (
+        <aside className="ct-nav" aria-hidden={!navPinned}>
+          <div className="ct-nav-head">
+            {brand}
+            {navToggle}
+          </div>
           {sidebar}
         </aside>
       )}
       <header className="ct-masthead">
-        <div className="ct-masthead-brand">
-          {!showNav && navToggle}
-          <div className="ct-brand-block">
-            <span className="ct-brand-name">Co-Thinker</span>
-            <span className="ct-brand-sub">we can know more than we can tell</span>
+        {!showNav && (
+          // 边栏收起时顶栏左上只留两个图标；名字住在边栏里，不跟着跳到顶栏来撑场面。
+          <div className="ct-masthead-brand">
+            {navToggle}
+            {!blank && <IconButton name="plus" label="新建对话" onClick={startNew} />}
           </div>
-        </div>
+        )}
+        {hasMessages && (
+          <h1 className="ct-masthead-title" title={title}>
+            {title}
+          </h1>
+        )}
         <div className="ct-masthead-tools">
           {preview && <span className="ct-masthead-note">示例 · 未连接模型</span>}
-          <button type="button" className="ct-toolbar-button" onClick={() => void actions.newSession()}>
-            新建对话
-          </button>
           <button
             type="button"
-            className={`ct-toolbar-button${showRecords ? ' is-selected' : ''}`}
+            className={`ct-toolbar-button${showRecords && track === 'records' ? ' is-selected' : ''}`}
             aria-label="地基"
-            aria-pressed={showRecords}
+            aria-pressed={showRecords && track === 'records'}
             disabled={!hasMessages}
-            title="达成的共识，和还在松动的地方"
-            onClick={() => setRecordOpen((x) => !x)}
+            onClick={() => setTrack((x) => (x === 'records' ? null : 'records'))}
           >
             地基
           </button>
           <button
             type="button"
-            className="ct-toolbar-button"
-            title="基于当前地基和对话生成执行简报"
-            disabled={!hasMessages || s.busy}
-            onClick={() => void actions.generateBrief()}
+            className={`ct-toolbar-button${showRecords && track === 'prompt' ? ' is-selected' : ''}`}
+            aria-pressed={showRecords && track === 'prompt'}
+            disabled={!hasMessages || (s.busy && !promptCurrent)}
+            onClick={() => (showRecords && track === 'prompt' ? setTrack(null) : openPrompt())}
           >
-            生成简报
+            {promptCurrent || brief.loading ? 'Prompt' : '生成 Prompt'}
           </button>
         </div>
       </header>
 
-      <main className="ct-main">
-        {hasMessages && (
-          <div className="ct-running-head" title={title}>
-            {title}
-          </div>
-        )}
-
-        {s.notice && (
+      <main className="ct-main" ref={mainRef}>
+        {(s.notice || state.error) && (
+          // 请求级的失败：网络断了（notice）或这一轮没生成出来（state.error）。
           <div className="ct-alert" role="alert">
-            {s.notice}
-            <button type="button" onClick={s.dismissNotice}>
+            {s.notice ?? state.error}
+            {state.error && !s.busy && (
+              <button type="button" onClick={() => void actions.retryTurn()}>
+                重试
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                s.dismissNotice()
+                s.dismissError()
+              }}
+            >
               知道了
             </button>
           </div>
@@ -243,81 +365,50 @@ export default function App({ transport }: { transport?: Transport } = {}) {
           onDropReference={() => s.setDraft({ reference: null })}
           onLocate={requestLocate}
         />
+        {leaving && (
+          <div className="ct-empty is-leaving" aria-hidden="true" style={leaving}>
+            <h1 className="ct-empty-headline">Prompt as crystallized thinking</h1>
+            <p className="ct-empty-sub">Prompt 不是输入技巧，而是共识后的思考结晶</p>
+          </div>
+        )}
       </main>
 
-      {showRecords && wide && <aside className="ct-records">{records}</aside>}
+      {wide && hasMessages && (
+        <aside className="ct-records-track" aria-hidden={!recordOpen}>
+          <div className="ct-records">{sheet}</div>
+        </aside>
+      )}
 
       <Dialog
         open={showRecords && !wide}
-        onClose={() => setRecordOpen(false)}
-        title="地基"
+        onClose={() => setTrack(null)}
+        title={view === 'prompt' ? 'Prompt' : '地基'}
         className="ct-record-dialog"
       >
-        {!wide && records}
+        {!wide && sheet}
       </Dialog>
 
-      <Dialog open={navDrawer} onClose={() => setNavDrawer(false)} title="最近的思考" className="ct-nav-dialog">
+      <Dialog open={navDrawer} onClose={() => setNavDrawer(false)} title="最近对话" className="ct-nav-dialog">
         {sidebar}
       </Dialog>
 
       <Dialog
-        open={briefOpen}
-        onClose={actions.closeBrief}
-        title="执行简报"
-        subtitle="递给 Cursor / Lovable / Kimi 用——把这场思考里达成的一切凝结成一段。"
-        className="ct-brief-dialog"
+        open={Boolean(deleteId)}
+        onClose={() => setDeleteId(null)}
+        title="删除对话？"
+        plain
+        className="ct-confirm"
       >
-        {brief.loading && <p className="ct-working">正在凝结这场对话…</p>}
-        {brief.error && (
-          <div className="ct-turn-error" role="alert">
-            {brief.error}
-            <button type="button" onClick={() => void actions.generateBrief()}>
-              重新生成
-            </button>
-          </div>
-        )}
-        {brief.snapshot && (
-          <>
-            {(s.briefRelation.added || s.briefRelation.quoteChanged) && (
-              <div className="ct-turn-status" role="status">
-                <span>{s.briefRelation.quoteChanged ? '引用依据已改变' : '这之后有新增'}</span>
-                <button type="button" onClick={() => void actions.generateBrief()}>
-                  重新生成
-                </button>
-              </div>
-            )}
-            <div className="ct-brief-body">
-              <div className="ct-markdown">
-                <Markdown source={brief.snapshot.markdown} />
-              </div>
-            </div>
-            <div className="ct-dialog-footer">
-              <button type="button" className="ct-secondary" onClick={() => void actions.generateBrief()}>
-                重新生成
-              </button>
-              <button
-                type="button"
-                className="ct-primary"
-                onClick={() => void navigator.clipboard?.writeText(brief.snapshot!.markdown)}
-              >
-                复制
-              </button>
-            </div>
-          </>
-        )}
-      </Dialog>
-
-      <Dialog open={Boolean(deleteId)} onClose={() => setDeleteId(null)} title="删除这段对话？">
         <div className="ct-dialog-copy">
-          <p>这段对话和它的地基将被删除，无法恢复。</p>
+          <p>{deleteCopy}</p>
         </div>
         <div className="ct-dialog-footer">
-          <button type="button" className="ct-secondary" onClick={() => setDeleteId(null)}>
+          <button type="button" className="ct-ghost" onClick={() => setDeleteId(null)}>
             取消
           </button>
           <button
             type="button"
-            className="ct-primary"
+            className="ct-primary is-destructive"
             onClick={() => {
               if (deleteId) void actions.deleteSession(deleteId)
               setDeleteId(null)

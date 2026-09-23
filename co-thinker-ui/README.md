@@ -132,8 +132,20 @@ type Reference = {
 
 ## 还没做到的
 
-- 没有接任何模型。示例文案不能证明模型的理解、异议或归纳质量。
+- 默认不接模型；示例文案不能证明模型的理解、异议或归纳质量。`?live` 接的是 `backend/`（DeepSeek），失败路径走过，成功路径还没实测。
 - 只实现最近一次用户输入的回改，没有任意历史分支编辑器。
-- 真实服务侧的 context assembly（有效地基 + 未覆盖的新表达 + 所指材料）只在模拟适配器里演示了时序，没有实现。
+- 服务侧的 context assembly 由 `backend/` 的 thinker / rewriter 提示词决定；「所指材料」（引用）目前只留在客户端，不随请求发给模型。
 - 表面语言参照了 Claude 桌面端量出来的数值，内容结构（边注、地基、Brief、引用）是这个产品自己的，没有照抄那套界面。
 - 审美仍待评价。测试通过和构建通过都不代表它好看。
+
+### co-thinker-ui：新前端怎么跑
+
+```bash
+cd co-thinker-ui && npm install && npm run dev      # http://127.0.0.1:5180
+```
+
+- 默认是**示例模式**：独立的模拟传输层，不连模型；顶栏有「示例 · 未连接模型」。打的字正好是脚本里的那句才推进，其他输入得到诚实的提示。
+- **实测**：先按上面的步骤起后端（`.env` 里填 `DEEPSEEK_API_KEY`），再打开 `http://127.0.0.1:5180/?live`（或在 `co-thinker-ui/.env.local` 写 `VITE_TRANSPORT=live`）。Vite 把 `/api` 代理到后端，端口跟根目录 `.env` 的 `PORT` 走（默认 8000），SSE 也走这里。
+- 真实传输层在 `src/transport/httpTransport.ts`：服务端只有消息正文、地基正文和记忆状态；id / sequence / version（正文指纹）和按轮的地基历史在客户端补出来，界面对示例与真实一视同仁。
+- `npm test`（Vitest）、`npm run typecheck`。
+

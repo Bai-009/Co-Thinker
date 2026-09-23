@@ -64,7 +64,8 @@ export interface Transport {
   createSession(topic?: string): Promise<SessionSnapshot>
   deleteSession(id: string): Promise<void>
   submit(input: SubmitInput, signal: AbortSignal): AsyncIterable<ReplyEvent>
-  requestBrief(req: BriefRequest, signal: AbortSignal): Promise<BriefSnapshot>
+  /** onDelta 收到的是到目前为止的全文，边写边给；最后仍以返回的快照为准。 */
+  requestBrief(req: BriefRequest, signal: AbortSignal, onDelta?: (markdown: string) => void): Promise<BriefSnapshot>
   retryMemory(sessionId: string): void
   subscribe(listener: (event: BackgroundEvent) => void): () => void
   readonly persistence: { ok: boolean; detail?: string }

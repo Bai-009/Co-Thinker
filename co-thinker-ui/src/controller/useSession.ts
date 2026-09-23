@@ -45,6 +45,8 @@ export interface BriefState {
   snapshot: BriefSnapshot | null
   loading: boolean
   error: string | null
+  /** 生成途中已经写出来的部分；完成后清空，以快照为准。 */
+  draft: string
 }
 
 export function useSession(transportFactory: () => Transport = () => new ExampleTransport()) {
@@ -63,6 +65,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
     snapshot: null,
     loading: false,
     error: null,
+    draft: '',
   })
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -128,7 +131,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
     async (id: string) => {
       await cancel()
       briefAbort.current?.abort()
-      setBrief({ snapshot: null, loading: false, error: null })
+      setBrief({ snapshot: null, loading: false, error: null, draft: '' })
       setEditing(null)
       setPane('thread')
       stash.current = null
@@ -182,7 +185,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
           }
         } catch (error) {
           if ((error as DOMException)?.name !== 'AbortError') {
-            setNotice('这一轮没有完成。你的输入已经保存，可以重试。')
+            setNotice('回复中断，输入已保存。')
           }
           const snapshot = await transport.loadSession(sessionId)
           if (snapshot) dispatch({ type: 'session/loaded', snapshot })
@@ -293,18 +296,21 @@ export function useSession(transportFactory: () => Transport = () => new Example
     const controller = new AbortController()
     briefAbort.current = controller
     setPane('brief')
-    setBrief({ snapshot: null, loading: true, error: null })
+    setBrief({ snapshot: null, loading: true, error: null, draft: '' })
     try {
       const snapshot = await transport.requestBrief(
         { sessionId: state.id, requestId: uid(), historyRevision: state.historyRevision },
         controller.signal,
+        (markdown) => {
+          if (briefAbort.current === controller) setBrief((b) => ({ ...b, draft: markdown }))
+        },
       )
       if (briefAbort.current === controller) {
-        setBrief({ snapshot, loading: false, error: null })
+        setBrief({ snapshot, loading: false, error: null, draft: '' })
       }
     } catch (error) {
       if ((error as DOMException)?.name !== 'AbortError' && briefAbort.current === controller) {
-        setBrief({ snapshot: null, loading: false, error: '这份文档没有生成出来，可以重试。' })
+        setBrief({ snapshot: null, loading: false, error: 'Prompt 生成失败', draft: '' })
       }
     }
   }, [state.historyRevision, state.id, transport])
@@ -361,6 +367,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
     briefRelation,
     notice,
     dismissNotice: () => setNotice(null),
+    dismissError: () => dispatch({ type: 'error/cleared' }),
     busy,
     uncovered: uncoveredMessages(state),
     revisable: revisableMessage(state),
@@ -377,7 +384,7 @@ export function useSession(transportFactory: () => Transport = () => new Example
       generateBrief,
       closeBrief: () => {
         briefAbort.current?.abort()
-        setBrief({ snapshot: null, loading: false, error: null })
+        setBrief({ snapshot: null, loading: false, error: null, draft: '' })
         setPane('thread')
       },
       retryMemory,

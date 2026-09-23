@@ -65,7 +65,9 @@ def get_thinker_prompt() -> str:
     """The single LLM call that handles a workshop turn — sees full
     conversation context and naturally fuses probe/expand/translate moves.
     """
-    return with_principles(load_prompt("thinker"))
+    # COTHINKER_THINKER_PROMPT 选文件名（不带 .md），默认 thinker；thinker_v1 是重写前的版本，留作对照。
+    name = os.getenv("COTHINKER_THINKER_PROMPT", "thinker").strip() or "thinker"
+    return with_principles(load_prompt(name))
 
 
 def get_foundation_rewriter_prompt() -> str:

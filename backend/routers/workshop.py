@@ -34,7 +34,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from deps import SESSION_HEADER, get_session
-from llm import chat_completion_stream
+from foundation import check_ratchet, describe_for_model
+from llm import call_options, chat_completion_stream
 from models import ChatRequest
 from runtime import runtime_for, spawn, memory_status
 from sse import (
@@ -57,29 +58,53 @@ log = logging.getLogger("cothinker.workshop")
 
 # --- prompt builders ----------------------------------------------------
 
-def _build_thinker_system_prompt(session: Session) -> str:
-    """Compose the thinker's system prompt with current state injected."""
-    parts = [get_thinker_prompt()]
-
+def _state_sections(session: Session) -> list[str]:
+    """当前状态的四段。顺序固定、不带时间戳，序列化是确定的，缓存才不会白白作废。"""
+    parts: list[str] = []
     if session.foundation_narrative.strip():
         parts.append("# 当前地基（散文自述）\n\n" + session.foundation_narrative.strip())
-
     if session.foundation.strip():
         parts.append("# 当前地基（编号清单）\n\n" + session.foundation.strip())
-
     if session.scratchpad.strip():
-        parts.append(
-            "# 当前 scratchpad（这次思考活动的内部状态）\n\n"
-            + session.scratchpad.strip()
-        )
-
+        parts.append("# 当前 scratchpad（这次思考活动的内部状态）\n\n" + session.scratchpad.strip())
     if session.plan.strip():
-        parts.append(
-            "# 当前 plan（阶段化工作流，`- [x]` 已完成，`- [ ]` 未完成）\n\n"
-            + session.plan.strip()
-        )
+        parts.append("# 当前 plan（阶段化工作流，`- [x]` 已完成，`- [ ]` 未完成）\n\n" + session.plan.strip())
+    return parts
 
-    return "\n\n".join(parts)
+
+def _build_thinker_system_prompt(session: Session) -> str:
+    """旧排法（COTHINKER_CONTEXT_LAYOUT=head）：状态放在系统提示里。"""
+    return "\n\n".join([get_thinker_prompt(), *_state_sections(session)])
+
+
+_STATE_POINTER = (
+    "# 当前状态在哪\n\n"
+    "当前地基（散文与清单）、scratchpad、plan 不在这里，而是附在对话最后一条 user 消息的前面，"
+    "以「# 当前状态」开头，后面跟着「# 现在这句」。先读状态，再读这句。"
+    "如果最后一条消息没有附状态，说明地基还是空的，对话刚开始。"
+)
+
+
+def _build_thinker_messages(session: Session) -> list[dict]:
+    """thinker 这次调用的完整消息列表。
+
+    默认排法 tail：静态指令在最前，每轮一字不变，前缀缓存能命中；历史原样追加；
+    当前状态附在最新一句前面。状态每轮都变，放在最前会让整条历史的缓存每轮作废；
+    放在末尾还让它紧挨着最新一句，是模型最看重的位置。head 是原来的排法，留作对照。
+    """
+    layout = os.getenv("COTHINKER_CONTEXT_LAYOUT", "tail").strip().lower()
+    messages = list(session.messages)
+    if layout != "tail" or not messages or messages[-1].get("role") != "user":
+        return [{"role": "system", "content": _build_thinker_system_prompt(session)}, *messages]
+    state = _state_sections(session)
+    content = messages[-1].get("content") or ""
+    if state:
+        content = "# 当前状态\n\n" + "\n\n".join(state) + "\n\n# 现在这句\n\n" + content
+    return [
+        {"role": "system", "content": get_thinker_prompt() + "\n\n" + _STATE_POINTER},
+        *messages[:-1],
+        {"role": "user", "content": content},
+    ]
 
 
 def _build_rewriter_messages(
@@ -150,15 +175,35 @@ def _build_rewriter_messages(
 
 # --- thinker streaming runner -------------------------------------------
 
+THINKER_RETRIES = int(os.getenv("COTHINKER_THINKER_RETRIES", "1") or 0)
+
+
 async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
     """Run the thinker call, streaming its SSE events.
 
     Yields ("event", payload) for each SSE event. Finally yields
     ("done", voices) where voices is list[(conf, content)] — possibly
     empty if the thinker chose [SILENCE].
+
+    模型偶尔写坏格式，连接偶尔抖一下。只要还没有任何东西流给用户，就静默重来一次；
+    已经开始输出就不重来，半截话交给上层处理。
     """
-    messages = [{"role": "system", "content": _build_thinker_system_prompt(session)}]
-    messages.extend(session.messages)
+    for attempt in range(1 + THINKER_RETRIES):
+        started = False
+        try:
+            async for item in _run_thinker_once(session):
+                if item[0] == "event":
+                    started = True
+                yield item
+            return
+        except Exception as exc:
+            if started or attempt >= THINKER_RETRIES:
+                raise
+            log.warning("thinker attempt %d failed before any output, retrying: %s", attempt + 1, exc)
+
+
+async def _run_thinker_once(session: Session) -> AsyncIterator[tuple]:
+    messages = _build_thinker_messages(session)
 
     parser = StreamParser()
     voices: list[tuple[float, str]] = []
@@ -172,7 +217,7 @@ async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
             voices.append((0.5, ""))
 
     try:
-        async for chunk in chat_completion_stream(messages):
+        async for chunk in chat_completion_stream(messages, **call_options("thinker")):
             for ev in parser.feed(chunk):
                 if ev.kind == "silence":
                     yield ("done", [])
@@ -257,70 +302,90 @@ async def _run_thinker(session: Session) -> AsyncIterator[tuple]:
 
 # --- foundation rewriter (non-yielding, runs in background task) --------
 
+REWRITER_RETRIES = int(os.getenv("COTHINKER_REWRITER_RETRIES", "2") or 0)
+_REQUIRED_BLOCKS = {"foundation": "[FOUNDATION]", "narrative": "[FOUNDATION_NARRATIVE]", "scratchpad": "[SCRATCHPAD]"}
+
+
+async def _call_rewriter(messages: list[dict]) -> tuple[StreamParser, str, str, str]:
+    """跑一次 rewriter，返回 (parser, foundation, narrative, 原始全文)。"""
+    parser = StreamParser()
+    foundation_text = ""
+    narrative_text = ""
+    raw = ""
+    async for chunk in chat_completion_stream(messages, **call_options("rewriter")):
+        raw += chunk
+        for ev in parser.feed(chunk):
+            if ev.block == "foundation" and ev.kind == "block_delta" and ev.content:
+                foundation_text += ev.content
+            elif ev.block == "narrative" and ev.kind == "block_delta" and ev.content:
+                narrative_text += ev.content
+    for ev in parser.flush():
+        if ev.block == "foundation" and ev.kind == "block_delta" and ev.content:
+            foundation_text += ev.content
+        elif ev.block == "narrative" and ev.kind == "block_delta" and ev.content:
+            narrative_text += ev.content
+    return parser, foundation_text, narrative_text, raw
+
+
 async def _run_rewriter_to_session(
     session: Session,
     voices_this_turn: list[tuple[float, str]],
     *, persist: bool = True,
 ) -> bool:
-    """Run the rewriter LLM call, parse the four blocks, and persist them
-    onto `session`. No SSE events — this runs in a background task that
-    has no client connection to stream to.
+    """Run the rewriter LLM call, check it, and persist the blocks onto `session`.
+
+    这是后台的循环：重写、校验、修补，有界。缺块，或者清单没过棘轮（见 foundation.py），
+    就把上一次的输出和违规点一起回给模型再来一次；几次都不过就保留旧版，
+    上层把记忆标成未更新。循环只放在代谢这边，心跳那边没有。
 
     By the time we get here we hold the session's async lock, so no other
-    rewriter for this session is running concurrently. Concurrent thinker
-    reads are GIL-atomic per attribute; the worst they can see is the new
-    narrative + the old list (or vice versa) for a few microseconds, never
-    a torn string within a single field.
+    rewriter for this session is running concurrently.
     """
-    messages = _build_rewriter_messages(session, voices_this_turn)
-    parser = StreamParser()
-    foundation_text = ""
-    narrative_text = ""
+    base = _build_rewriter_messages(session, voices_this_turn)
+    feedback: list[dict] = []
+    for attempt in range(1 + REWRITER_RETRIES):
+        try:
+            parser, foundation_text, narrative_text, raw = await _call_rewriter(base + feedback)
+        except Exception:
+            log.warning("rewriter background call failed (attempt %d)", attempt + 1, exc_info=True)
+            if attempt >= REWRITER_RETRIES:
+                return False
+            continue
 
-    try:
-        async for chunk in chat_completion_stream(messages):
-            for ev in parser.feed(chunk):
-                if ev.block == "foundation" and ev.kind == "block_delta" and ev.content:
-                    foundation_text += ev.content
-                elif ev.block == "narrative" and ev.kind == "block_delta" and ev.content:
-                    narrative_text += ev.content
-        for ev in parser.flush():
-            if ev.block == "foundation" and ev.kind == "block_delta" and ev.content:
-                foundation_text += ev.content
-            elif ev.block == "narrative" and ev.kind == "block_delta" and ev.content:
-                narrative_text += ev.content
-    except Exception:
-        log.warning("rewriter background call failed", exc_info=True)
-        return False
+        missing = [tag for name, tag in _REQUIRED_BLOCKS.items() if name not in parser.seen_blocks]
+        if missing:
+            reason = f"上一次输出里没读到 {'、'.join(missing)} 块。六个块都必须出现，每块都要有开头和收尾标记，顺序不变，请重新输出全部块。"
+        else:
+            problems = check_ratchet(session.foundation, foundation_text.strip())
+            reason = describe_for_model(problems) if problems else ""
+        if reason:
+            # 把被拒的原文留在日志里（截断），不然没法知道模型到底写了什么。
+            log.warning(
+                "rewriter output rejected (attempt %d): %s | raw %d chars: %s",
+                attempt + 1, reason.splitlines()[0][:80], len(raw), raw.replace("\n", "⏎")[:600],
+            )
+            if attempt >= REWRITER_RETRIES:
+                return False
+            feedback = [{"role": "assistant", "content": raw}, {"role": "user", "content": reason}]
+            continue
 
-    if not {"foundation", "narrative", "scratchpad"}.issubset(parser.seen_blocks):
-        return False
+        final_sense = dict(session.sense)
+        final_sense.update(parse_sense_block(parser.sense_buf) if parser.sense_buf.strip() else {})
 
-    new_foundation = foundation_text.strip()
-    new_narrative = narrative_text.strip()
-    new_scratchpad = parser.scratchpad_buf.strip()
-    sense_values = parse_sense_block(parser.sense_buf) if parser.sense_buf.strip() else {}
+        session.foundation = foundation_text.strip()
+        session.foundation_narrative = narrative_text.strip()
+        session.scratchpad = parser.scratchpad_buf.strip()
+        session.sense = final_sense
+        # Plan field: only overwrite if the rewriter explicitly emitted [PLAN]
+        # (even if empty — that's how rewriter signals "clear the plan"). If it
+        # skipped the block entirely (parser.plan_seen=False), keep existing.
+        if parser.plan_seen:
+            session.plan = parser.plan_buf.strip()
 
-    final_sense = dict(session.sense)
-    final_sense.update(sense_values)
-
-    if "foundation" in parser.seen_blocks:
-        session.foundation = new_foundation
-    if "narrative" in parser.seen_blocks:
-        session.foundation_narrative = new_narrative
-    if "scratchpad" in parser.seen_blocks:
-        session.scratchpad = new_scratchpad
-    session.sense = final_sense
-
-    # Plan field: only overwrite if the rewriter explicitly emitted [PLAN]
-    # (even if empty — that's how rewriter signals "clear the plan"). If it
-    # skipped the block entirely (parser.plan_seen=False), keep existing.
-    if parser.plan_seen:
-        session.plan = parser.plan_buf.strip()
-
-    if persist:
-        store.save(session)
-    return True
+        if persist:
+            store.save(session)
+        return True
+    return False
 
 
 # --- versioned background memory and foreground turns -------------------
@@ -337,9 +402,15 @@ async def _metabolize_turn(session_id, voices_this_turn, messages=None, epoch=No
     # Capture before waiting: a queued job must never borrow a later user's input.
     frozen_messages = deepcopy(live.messages if messages is None else messages)
     prefix = len(frozen_messages)
+    # 合并排队：连着几轮排队时，后面的重写本来就覆盖前面的（它读的是上次快照之后
+    # 的全部对话），等待中的旧任务让位给最新的一个。只在同一纪元内比较。
+    if rt.memory_newest[0] != epoch or prefix > rt.memory_newest[1]:
+        rt.memory_newest = (epoch, prefix)
     async with rt.memory_lock:
         live = store.get(session_id)
         if live is None or rt.epoch != epoch:
+            return
+        if rt.memory_newest[0] == epoch and prefix < rt.memory_newest[1]:
             return
         working = deepcopy(live)
         working.messages = frozen_messages
