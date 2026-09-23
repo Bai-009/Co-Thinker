@@ -1,8 +1,8 @@
 // Deterministic interaction fixture. Never calls a model or the live API.
 export const isPreview = () =>
   new URLSearchParams(window.location.search).get("preview") === "1";
-const KEY = "cothinker.preview.v1";
-export const previewSeedId = "preview-co-thinking";
+const KEY = "cothinker.preview.v2";
+export const previewSeedId = "preview-shared-desk";
 const opening = [
   {
     role: "user",
@@ -12,7 +12,7 @@ const opening = [
   {
     role: "assistant",
     content:
-      "[VOICE]那张纸不必一开始就有结构。我们先把想法说出来，值得留下的东西慢慢浮现。\n\n不过，**一起想事情**和“问一句、答一句”，你觉得差别在哪里？[/VOICE]",
+      "[VOICE]那张纸让两个人有了**可以一起指着讨论的东西**。有时是一个结论，有时只是还不满意的一句话。\n\n我觉得值得保留的，是想法仍然可以被对方改变的状态。[/VOICE]",
   },
   {
     role: "user",
@@ -22,7 +22,7 @@ const opening = [
   {
     role: "assistant",
     content:
-      "[VOICE]那它每次可以带来**一个值得回应的新想法**，把继续思考的位置留给你。\n\n比如现在：我觉得“少说”还不够。它得知道什么时候该提出反例，什么时候该接着你的直觉往下走。这个分寸，比把长回答切短更重要。[/VOICE]",
+      "[VOICE]我觉得关键是：**它说出来的东西，你愿不愿意接着想。**\n\n一句有根据的反例，可能比五个问题更能打开思路。我们可以先看：什么时候一个反例是在帮助思考，什么时候又变成了抢话？[/VOICE]",
   },
 ];
 const baseNotes = {
@@ -209,10 +209,10 @@ export async function previewFetch(input, init = {}) {
     question = "哪些改变可以直接记录，哪些分歧需要再确认？";
   } else if (/界面|颜色|背景|置信/.test(text)) {
     response = [
-      "整页变色传达了一种气氛，却很难告诉你：**究竟是哪一句还没想清楚。**",
-      "我更倾向让反馈贴着具体内容出现：可以接着某一句聊，也能看到哪些判断已经留下、哪些还在讨论。颜色只辅助辨认，不替代意思。",
+      "颜色可以承接文字之外的感受。这里值得区分：**我感到被回应了**，和“这个判断已经正确了”，是两种不同的信号。",
+      "我们可以保留氛围的变化，同时让具体的分歧有可以指向的位置。这样既有交流的温度，也能继续琢磨究竟哪里没想清楚。",
     ];
-    extra = "反馈关联具体话语或判断；不把模型自报的置信度当作客观正确率。";
+    extra = null;
     question = "怎样让反馈足够可见，又不打断交流？";
   } else {
     response = [

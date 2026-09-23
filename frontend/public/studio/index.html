@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light"><title>Co-Thinker · 书店里的独处</title>
+  <link rel="stylesheet" href="./studio.css">
+</head>
+<body>
+  <svg class="defs" aria-hidden="true"><defs>
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M12 19V5m-5 5 5-5 5 5"/></symbol>
+    <symbol id="next" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="record" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8h6m-6 4h6m-6 4h4"/></symbol>
+    <symbol id="reset" viewBox="0 0 24 24"><path d="M5 9a7 7 0 1 1-1 6M5 4v5h5"/></symbol>
+    <symbol id="back" viewBox="0 0 24 24"><path d="m10 6-6 6 6 6M4 12h16"/></symbol>
+    <symbol id="stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="draw" viewBox="0 0 24 24"><path d="m5 16-1 4 4-1L19 8l-3-3L5 16Zm9-9 3 3M12 20h8"/></symbol>
+    <symbol id="copy-icon" viewBox="0 0 24 24"><path d="M9 8h11v13H9zM15 4H4v13"/></symbol>
+  </defs></svg>
+  <header class="topbar">
+    <a class="wordmark" href="./" aria-label="Co-Thinker">Co<span class="hyphen">-</span>Thinker</a>
+    <div class="top-actions">
+      <button id="material-link" class="text-button" hidden><svg><use href="#draw"/></svg><span>草图</span></button>
+      <button id="records" class="text-button" aria-label="打开讨论笔记"><svg><use href="#record"/></svg><span>笔记</span><i id="update-dot" hidden></i></button>
+      <span class="action-divider" aria-hidden="true"></span>
+      <button id="restart" class="icon-button" aria-label="重新演示" title="重新演示"><svg><use href="#reset"/></svg></button>
+    </div>
+  </header>
+  <main class="studio">
+    <div class="reading-area" id="reading-area" tabindex="0" aria-label="对话记录">
+      <div class="reading-column">
+        <header class="topic"><span class="topic-kind">书店构想</span><h1>书店里的独处</h1></header>
+        <div class="thread" id="thread" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <div class="reading-end" aria-hidden="true"></div>
+      </div>
+    </div>
+    <button class="latest" id="latest" hidden>最新消息 ↓</button>
+    <section class="input-area" aria-label="输入消息">
+      <form id="composer" class="composer">
+        <div class="input-line"><label class="sr-only" for="input">消息</label><textarea id="input" placeholder="接着说…" rows="1" maxlength="3000"></textarea><button class="send" id="send" type="submit" disabled aria-label="发送"><svg><use href="#arrow"/></svg></button></div>
+        <div class="composer-foot"><span id="activity" role="status"></span><span class="key-hint">↵ 发送</span></div>
+      </form>
+      <div class="demo-bar"><button id="about">交互原型 · 预设对话</button><div class="demo-actions"><button id="undo" class="icon-button" disabled aria-label="回到上一轮" title="回到上一轮"><svg><use href="#back"/></svg></button><button id="continue">填入示例<svg><use href="#next"/></svg></button></div></div>
+      <p id="notice" class="notice" role="status" hidden></p>
+    </section>
+  </main>
+  <dialog id="record-dialog" class="records-panel" aria-labelledby="record-title">
+    <div class="panel-header"><div><span class="eyebrow">书店构想</span><h2 id="record-title">讨论笔记</h2></div><button class="icon-button" data-close aria-label="关闭笔记"><svg><use href="#close"/></svg></button></div>
+    <div id="record-content" class="panel-content"></div>
+    <div class="export-fallback" id="export-fallback" hidden><label for="note-export">笔记文本</label><textarea id="note-export" readonly></textarea><p id="copy-status" role="status"></p></div>
+    <div class="panel-footer"><button id="copy" class="text-button"><svg><use href="#copy-icon"/></svg><span>复制笔记</span></button></div>
+  </dialog>
+  <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title">
+    <div class="panel-header"><h2 id="about-title">原型说明</h2><button class="icon-button" data-close aria-label="关闭说明"><svg><use href="#close"/></svg></button></div>
+    <div class="panel-content"><p>一段虚构的书店讨论。示例包含联想、反例、共同草图与理解修订，供体验界面和交流节奏。</p><p>点击“填入示例”，读过后发送，即可继续。草图可自由切换，笔记随演示异步更新；查看草图不表示同意方案。</p><p>这是预设脚本，未连接模型。输入仅支持示例中的完整回复；不将脚本效果视为真实 AI 的思考能力。刷新或重新演示会清空本次内容。</p></div>
+  </dialog>
+  <script type="module" src="./studio.js"></script>
+</body>
+</html>

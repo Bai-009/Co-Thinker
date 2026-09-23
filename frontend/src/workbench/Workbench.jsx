@@ -5,9 +5,16 @@ import Icon, { Mark } from "./Icon";
 import useWorkbench from "./useWorkbench";
 import { isPreview } from "./preview";
 import { parseFoundationItems } from "../lib/messages";
+import useDesk from "./useDesk";
+import Desk from "./Desk";
+import { composeReference, splitReference, sourceForPassage } from "./references";
 const Markdown = ({ children }) => (
   <ReactMarkdown remarkPlugins={[remarkGfm]}>{children || ""}</ReactMarkdown>
 );
+function UserText({ text }) {
+  const parsed = splitReference(text);
+  return <>{parsed.quote && <blockquote className="ct-message-reference"><span>引用 · {parsed.source}</span><Markdown>{parsed.quote}</Markdown></blockquote>}<Markdown>{parsed.text}</Markdown></>;
+}
 export function isSubmitKey(e) {
   return (
     e.key === "Enter" &&
@@ -78,7 +85,7 @@ const noteLabels = {
   pending: "有新内容待整理",
   error: "记录暂未更新",
 };
-function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
+function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief, desk, onLocate, sourceExists }) {
   const active = parseFoundationItems(notes.foundation).filter(
     (x) => !x.startsWith("~~"),
   );
@@ -89,7 +96,7 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
     <div className="ct-records-content">
       <div className="ct-records-head">
         <div>
-          <h2>共同记录</h2>
+          <h2>思考页</h2>
         </div>
         <IconButton name="close" label="收起共同记录" onClick={onClose} />
       </div>
@@ -106,9 +113,10 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
         )}
       </div>
       <div className="ct-records-scroll">
+        <Desk desk={desk} onQuote={onQuote} onLocate={onLocate} sourceExists={sourceExists} />
         {notes.focus && (
           <section className="ct-record-focus">
-            <span className="ct-eyebrow">正在思考</span>
+            <span className="ct-eyebrow">正在展开的问题</span>
             <h3>{notes.focus}</h3>
           </section>
         )}
@@ -116,7 +124,7 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
           <p className="ct-record-summary">{notes.foundation_narrative}</p>
         )}
         <section className="ct-record-section">
-          <h3>已经明确</h3>
+          <h3>逐渐明确</h3>
           {active.length ? (
             <ol className="ct-record-list">
               {active.map((item, i) => (
@@ -128,7 +136,7 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
                       onClick={() => onQuote(item, "共同记录")}
                     >
                       <Icon name="reply" size={14} />
-                      接着这一点聊
+                        继续推敲
                     </button>
                   </div>
                 </li>
@@ -136,13 +144,13 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
             </ol>
           ) : (
             <p className="ct-empty-note">
-              还没有要留下的判断。先聊起来，这里会在后台更新。
+              对话中的判断会逐渐留在这里。
             </p>
           )}
         </section>
         {notes.open_questions?.length > 0 && (
           <section className="ct-record-section">
-            <h3>还在讨论</h3>
+            <h3>还在推敲</h3>
             {notes.open_questions
               .filter((x) => x && x !== "无")
               .map((q, i) => (
@@ -177,14 +185,14 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
         )}
         {(active.length > 0 || notes.foundation_narrative) && (
           <p className="ct-record-foot">
-            由 AI 随对话整理。发现理解偏差，可以直接在对话中修正。
+            随对话整理，可引用其中一条继续修正。
           </p>
         )}
       </div>
       <div className="ct-record-export">
         <button className="ct-secondary" disabled={!canBrief} onClick={onBrief}>
           <Icon name="brief" size={16} />
-          生成 Brief
+          将思考整理成 Brief
         </button>
       </div>
     </div>
@@ -193,17 +201,19 @@ function Records({ notes, onQuote, onClose, onRetry, onBrief, canBrief }) {
 export default function Workbench() {
   const w = useWorkbench(),
     preview = isPreview();
+  const desk = useDesk(w.currentId, preview);
   const [draft, setDraft] = useState(""),
     [quote, setQuote] = useState(null),
     [editing, setEditing] = useState(false);
-  const [recordOpen, setRecordOpen] = useState(false),
+  const [recordOpen, setRecordOpen] = useState(() => window.innerWidth >= 1120),
     [navOpen, setNavOpen] = useState(false);
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 1180);
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 1120);
   const [theme, setTheme] = useState(
     () => localStorage.getItem("cothinker.theme") || "light",
   );
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [selection, setSelection] = useState(null);
+  const [highlightId, setHighlightId] = useState("");
   const [copied, setCopied] = useState(""),
     [copyError, setCopyError] = useState(""),
     [deleteId, setDeleteId] = useState(null),
@@ -213,13 +223,14 @@ export default function Workbench() {
     scroll = useRef(null),
     tail = useRef(null),
     stick = useRef(true),
-    copyTimer = useRef(null);
+    copyTimer = useRef(null),
+    highlightTimer = useRef(null);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("cothinker.theme", theme);
   }, [theme]);
   useEffect(() => {
-    const mq = matchMedia("(max-width: 1179px)");
+    const mq = matchMedia("(max-width: 1119px)");
     const listener = () => {
       setNarrow(mq.matches);
       if (mq.matches) setRecordOpen(false);
@@ -231,7 +242,7 @@ export default function Workbench() {
     if (stick.current && scroll.current)
       scroll.current.scrollTop = scroll.current.scrollHeight;
   }, [w.messages, w.loading]);
-  useEffect(() => () => clearTimeout(copyTimer.current), []);
+  useEffect(() => () => { clearTimeout(copyTimer.current); clearTimeout(highlightTimer.current); }, []);
   useLayoutEffect(() => {
     const el = composer.current;
     if (el) {
@@ -254,6 +265,7 @@ export default function Workbench() {
     setQuote(null);
     setEditing(false);
     setNavOpen(false);
+    setSelection(null);
     stick.current = true;
     setAtBottom(true);
     await w.select(id);
@@ -266,6 +278,27 @@ export default function Workbench() {
     if (narrow) setRecordOpen(false);
     composer.current?.focus();
   };
+  const findSource = (item) => sourceForPassage(w.messages, item);
+  const locate = (item) => {
+    const m = findSource(item);
+    if (!m) return;
+    if (narrow) setRecordOpen(false);
+    stick.current = false;
+    requestAnimationFrame(() => {
+      document.getElementById(`turn-${m.id}`)?.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center",
+      });
+      setHighlightId(m.id);
+      clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightId(""), 2200);
+    });
+  };
+  const keep = (text, source = "Co-Thinker") => {
+    desk.add(text, source);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+    setRecordOpen(true);
+  };
   const captureSelection = () => {
     const selected = window.getSelection();
     const text = selected?.toString().trim();
@@ -274,14 +307,13 @@ export default function Workbench() {
       text.length < 3000 &&
       scroll.current?.contains(selected.anchorNode)
     ) {
-      setSelection(text);
+      const node = selected.anchorNode?.nodeType === 1 ? selected.anchorNode : selected.anchorNode?.parentElement;
+      setSelection({ text, source: node?.closest(".ct-user-turn") ? "我的表达" : "Co-Thinker" });
     } else setSelection(null);
   };
   const submit = () => {
     if (!draft.trim() || w.loading) return;
-    const text = quote
-      ? `关于这段话：\n> ${quote.text.replace(/\n/g, "\n> ")}\n\n${draft.trim()}`
-      : draft.trim();
+    const text = composeReference(draft, quote);
     setDraft("");
     setQuote(null);
     setSuggestionsOpen(false);
@@ -379,37 +411,18 @@ export default function Workbench() {
   );
   return (
     <div
-      className={`ct-app ${recordOpen && !narrow ? "has-records" : ""} ${navOpen && !narrow ? "has-nav" : ""}`}
+      className={`ct-app ${recordOpen && !narrow && w.messages.length ? "has-records" : ""} ${!w.messages.length ? "is-welcome" : ""}`}
     >
-      {navOpen && !narrow && <aside className="ct-sidebar">{sidebar}</aside>}
+      <header className="ct-masthead">
+        <div className="ct-masthead-brand"><IconButton name="sidebar" label="打开对话列表" onClick={() => setNavOpen(true)} /><Mark size={27} /><span>Co-Thinker</span></div>
+        <div className="ct-masthead-tools">
+          <button className="ct-toolbar-button" aria-label="新的想法" title="新的想法" onClick={() => choose("")}><Icon name="plus" size={17} /><span>新的想法</span></button>
+          <IconButton name={theme === "light" ? "moon" : "sun"} label={theme === "light" ? "切换深色外观" : "切换浅色外观"} onClick={() => setTheme((t) => t === "light" ? "dark" : "light")} />
+          <button className={`ct-toolbar-button ${recordOpen && w.messages.length ? "is-selected" : ""}`} aria-label="共同记录" aria-pressed={Boolean(recordOpen && w.messages.length)} disabled={!w.messages.length} onClick={() => setRecordOpen((x) => !x)}><Icon name="book" size={17} /><span>思考页</span>{desk.items.length > 0 && <small>{desk.items.length}</small>}</button>
+        </div>
+      </header>
       <main className="ct-main">
-        <header className="ct-topbar">
-          <div className="ct-topbar-title">
-            <span className="ct-mobile-menu">
-              <IconButton
-                name="sidebar"
-                label={navOpen ? "收起对话列表" : "打开对话列表"}
-                onClick={() => setNavOpen((v) => !v)}
-              />
-            </span>
-            <h1 title={title}>{title}</h1>
-          </div>
-          <div className="ct-topbar-actions">
-            <button
-              className={`ct-toolbar-button ${recordOpen ? "is-selected" : ""}`}
-              aria-label="共同记录"
-              title="共同记录"
-              aria-pressed={recordOpen}
-              onClick={() => setRecordOpen((x) => !x)}
-            >
-              <Icon name="book" />
-              <span>共同记录</span>
-              {w.notes.memory?.state === "updating" && (
-                <span className="ct-record-updating" aria-label="记录更新中" />
-              )}
-            </button>
-          </div>
-        </header>
+        {w.messages.length > 0 && <div className="ct-session-heading"><span>{preview ? "示例对话" : "这次思考"}</span><h1 title={title}>{title}</h1></div>}
         {w.error && (
           <div className="ct-alert" role="alert">
             {w.error}
@@ -438,13 +451,9 @@ export default function Workbench() {
               </div>
             ) : !w.messages.length ? (
               <div className="ct-welcome">
-                <Mark size={52} />
-                <h2>现在，你在想什么？</h2>
-                <p>
-                  一个念头，一个还没想明白的问题。
-                  <br />
-                  从你想说的地方开始。
-                </p>
+                <span className="ct-welcome-mark"><Mark size={38} /></span>
+                <h1>最近，在想什么？</h1>
+                <p>从还没想清楚的地方开始。</p>
                 <div className="ct-starters">
                   {[
                     "我有个想法，还不太成形。",
@@ -467,17 +476,18 @@ export default function Workbench() {
               <>
                 {w.messages.map((m, index) =>
                   m.role === "user" ? (
-                    <article className="ct-user-turn" key={m.id}>
+                    <article id={`turn-${m.id}`} className={`ct-user-turn ${highlightId === m.id ? "is-highlighted" : ""}`} key={m.id}>
                       <div className="ct-user-bubble">
-                        <Markdown>{m.content}</Markdown>
+                        <UserText text={m.content} />
                       </div>
                       {index === latestUser && !w.streaming && (
                         <div className="ct-user-actions">
                           <button
                             onClick={() => {
                               setEditing(true);
-                              setQuote(null);
-                              setDraft(m.content);
+                              const parsed = splitReference(m.content);
+                              setQuote(parsed.quote ? {text:parsed.quote,source:parsed.source} : null);
+                              setDraft(parsed.text);
                               composer.current?.focus();
                             }}
                           >
@@ -488,9 +498,9 @@ export default function Workbench() {
                       )}
                     </article>
                   ) : (
-                    <article className="ct-assistant-turn" key={m.id}>
+                    <article id={`turn-${m.id}`} className={`ct-assistant-turn ${highlightId === m.id ? "is-highlighted" : ""}`} key={m.id}>
                       <div className="ct-voice-mark">
-                        <Mark size={26} />
+                        <Mark size={21} />
                       </div>
                       <div className="ct-assistant-body">
                         {!m.voices?.length && m.streaming ? (
@@ -515,6 +525,7 @@ export default function Workbench() {
                                     <Icon name="reply" size={15} />
                                     接着聊
                                   </button>
+                                  <button onClick={() => keep(v)}><Icon name="pin" size={14} />留在手边</button>
                                   <IconButton
                                     name={
                                       copied === `${m.id}-${i}`
@@ -558,10 +569,11 @@ export default function Workbench() {
                 <div ref={tail} />
                 {selection && (
                   <div className="ct-selection-action">
-                    <button onClick={() => quoteMessage(selection)}>
+                    <button onClick={() => quoteMessage(selection.text, selection.source)}>
                       <Icon name="reply" size={16} />
-                      接着选中的这句话聊
+                      聊这一句
                     </button>
+                    <button onClick={() => keep(selection.text, selection.source)}><Icon name="pin" size={15} />留在手边</button>
                   </div>
                 )}
               </>
@@ -646,7 +658,7 @@ export default function Workbench() {
               }}
             />
             <div className="ct-composer-bottom">
-              <span>{w.streaming ? "随时可以插话" : ""}</span>
+              <span className={`ct-presence ${w.streaming ? "is-active" : ""}`}><span />{w.streaming ? "正在回应 · 随时可以接话" : ""}</span>
               <div>
                 {w.streaming && (
                   <IconButton name="stop" label="停止回复" onClick={w.stop} />
@@ -720,7 +732,7 @@ export default function Workbench() {
           )}
         </footer>
       </main>
-      {recordOpen && !narrow && (
+      {recordOpen && !narrow && w.messages.length > 0 && (
         <aside className="ct-records">
           <Records
             notes={w.notes}
@@ -729,6 +741,7 @@ export default function Workbench() {
             onRetry={w.retryMemory}
             onBrief={w.generateBrief}
             canBrief={w.messages.length > 0 && !w.streaming && !w.loading}
+            desk={desk} onLocate={locate} sourceExists={(item) => Boolean(findSource(item))}
           />
         </aside>
       )}
@@ -745,10 +758,11 @@ export default function Workbench() {
           onRetry={w.retryMemory}
           onBrief={w.generateBrief}
           canBrief={w.messages.length > 0 && !w.streaming && !w.loading}
+          desk={desk} onLocate={locate} sourceExists={(item) => Boolean(findSource(item))}
         />
       </Dialog>
       <Dialog
-        open={navOpen && narrow}
+        open={navOpen}
         onClose={() => setNavOpen(false)}
         title="思考空间"
         className="ct-nav-dialog"

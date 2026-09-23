@@ -1,5 +1,7 @@
 import React from "react";
 const paths = {
+  pin: <><path d="m8 3 8 0-1 6 3 4v2H6v-2l3-4zM12 15v6" /></>,
+  source: <><path d="M8 5H4v15h15v-4M13 4h7v7M20 4 10 14" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   arrow: <path d="M12 19V5m-6 6 6-6 6 6" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
