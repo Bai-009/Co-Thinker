@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 COPY . .
+# 打包出来的页面默认连真实后端，不是示例模式。
+ENV VITE_TRANSPORT=live
 RUN npm run build
 
 # --- serve stage ---
