@@ -25,6 +25,17 @@ describe('paragraphs', () => {
     const text = '一'.repeat(120) + '。' + '最后半句没有句号'
     const out = paragraphs(text)
     expect(out.join('')).toBe(text)
-    expect(out.at(-1)).toBe('最后半句没有句号')
+    expect(out.at(-1)!.endsWith('最后半句没有句号')).toBe(true)
+  })
+
+  it('does not leave a single short sentence as its own paragraph', () => {
+    const text =
+      '做的是一个 Python 网站，讲底层原理，不讲语法。读者定下来了：已经会写一点，会照着写，但不知道代码跑起来的时候发生了什么。' +
+      '还没定的是从哪讲起。有一路是从他们天天写却没停下来的那几行切进去，比如 x = 5 之后 x 住在哪，不走从硬件往下讲。还没认下。'
+    const out = paragraphs(text)
+    expect(out.join('')).toBe(text)
+    expect(out.every((p) => p.length >= 20)).toBe(true)
+    expect(out.at(-1)!.endsWith('还没认下。')).toBe(true)
+    expect(out.some((p) => p.startsWith('还没定的是从哪讲起。'))).toBe(true)
   })
 })
