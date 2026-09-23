@@ -25,7 +25,8 @@ describe('服务端格式 → 领域', () => {
     ].join('\n')
     const claims = parseClaims(list)
     expect(claims.map((c) => c.id)).toEqual(['c0', 'c1', 'c2', 'c3'])
-    expect(claims[1]).toMatchObject({ status: 'superseded', supersededBy: 'c3', text: '用 AI 边写边学，工具用 Cursor。' })
+    expect(claims[1]).toMatchObject({ status: 'superseded', supersededBy: 'c3', text: '用 AI 边写边学，工具用 Cursor。', note: '明确了顺序' })
+    expect(claims[3].note).toBeUndefined()
     expect(claims[3]).toMatchObject({ status: 'confirmed', text: '先做前端原型再补后端，工具用 Cursor。' })
   })
 

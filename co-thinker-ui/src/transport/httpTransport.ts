@@ -143,12 +143,14 @@ export function parseClaims(list: string): GroundworkClaim[] {
     const struck = body.match(/^~~([\s\S]*?)~~\s*(.*)$/)
     if (struck) {
       const by = struck[2].match(/#\s*(\d+)/)
+      const why = struck[2].match(/[（(]([^（）()]+)[）)]\s*$/)
       return {
         id: `c${i}`,
         text: struck[1].trim(),
         status: 'superseded' as const,
         sourceIds: [],
         supersededBy: by ? `c${Number(by[1]) - 1}` : undefined,
+        ...(why ? { note: why[1].trim() } : {}),
       }
     }
     return { id: `c${i}`, text: body.trim(), status: 'confirmed' as const, sourceIds: [] }

@@ -40,6 +40,8 @@ export interface GroundworkClaim {
   status: Epistemic
   sourceIds: string[]
   supersededBy?: string
+  /** 被取代时后台写下的原因，清单里 `→ 被 #N 取代（原因）` 括号里那句。 */
+  note?: string
 }
 
 export interface Groundwork {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groundworkDelta, isEmptyDelta } from './groundwork'
+import { arrangeClaims, groundworkDelta, isEmptyDelta } from './groundwork'
 import type { Groundwork, GroundworkClaim } from './types'
 
 const claim = (
@@ -66,5 +66,36 @@ describe('两版地基之间的变化', () => {
   it('原样重来一次没有变化', () => {
     const g = ground(1, [claim('c0', 'confirmed')], ['问题一'])
     expect(isEmptyDelta(groundworkDelta(g, { ...g, version: 2 }))).toBe(true)
+  })
+})
+
+describe('arrangeClaims', () => {
+  const shape = (claims: GroundworkClaim[]) =>
+    arrangeClaims(claims).map((a) => [a.n, a.origins.map((o) => o.n)] as const)
+
+  it('被取代的条目挂在接替它的那条下面，编号不变', () => {
+    const claims = [claim('c0', 'superseded', '旧', 'c1'), claim('c1', 'confirmed'), claim('c2', 'confirmed')]
+    expect(shape(claims)).toEqual([[2, [1]], [3, []]])
+  })
+
+  it('接替了又被接替：一路挂到现在那条下面，近的在上', () => {
+    const claims = [
+      claim('c0', 'superseded', 'a', 'c1'),
+      claim('c1', 'superseded', 'b', 'c3'),
+      claim('c2', 'confirmed'),
+      claim('c3', 'confirmed'),
+    ]
+    expect(shape(claims)).toEqual([[3, []], [4, [2, 1]]])
+  })
+
+  it('指向缺失或绕成圈的，留在原位', () => {
+    const claims = [
+      claim('c0', 'superseded', '没指向'),
+      claim('c1', 'superseded', '指向不存在的', 'c9'),
+      claim('c2', 'superseded', '圈', 'c3'),
+      claim('c3', 'superseded', '圈', 'c2'),
+      claim('c4', 'confirmed'),
+    ]
+    expect(shape(claims)).toEqual([[1, []], [2, []], [3, []], [4, []], [5, []]])
   })
 })
