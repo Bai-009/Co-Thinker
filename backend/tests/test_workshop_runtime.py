@@ -206,3 +206,30 @@ def test_tail_layout_puts_state_before_latest_message(state, monkeypatch):
     monkeypatch.setenv('COTHINKER_CONTEXT_LAYOUT','head')
     msgs=workshop._build_thinker_messages(s)
     assert '1. 一条。' in msgs[0]['content'] and msgs[1:]==s.messages
+
+@pytest.mark.asyncio
+async def test_rewriter_accepts_block_missing_its_close_marker(state, monkeypatch):
+    s=state.get_or_create('unclosed');s.foundation='1. 第一条。'
+    calls=[]
+    async def stream(messages, **__):
+        calls.append(messages)
+        yield '[FOUNDATION_NARRATIVE]漏了收尾\n\n[FOUNDATION]1. 第一条。\n2. 第二条。[/FOUNDATION][PLAN][/PLAN][SCRATCHPAD]k: v[/SCRATCHPAD]'
+    monkeypatch.setattr(workshop,'chat_completion_stream',stream)
+    assert await workshop._run_rewriter_to_session(s,[],persist=False)
+    assert len(calls)==1
+    assert s.foundation_narrative=='漏了收尾' and s.foundation=='1. 第一条。\n2. 第二条。'
+
+@pytest.mark.asyncio
+async def test_reask_says_what_could_not_be_read(state, monkeypatch):
+    s=state.get_or_create('noblock')
+    calls=[]
+    async def stream(messages, **__):
+        calls.append(messages)
+        if len(calls)==1:
+            yield '[FOUNDATION_NARRATIVE]只有散文[/FOUNDATION_NARRATIVE]'
+        else:
+            yield '[FOUNDATION_NARRATIVE]n[/FOUNDATION_NARRATIVE][FOUNDATION]1. 一条。[/FOUNDATION][SCRATCHPAD]k: v[/SCRATCHPAD]'
+    monkeypatch.setattr(workshop,'chat_completion_stream',stream)
+    assert await workshop._run_rewriter_to_session(s,[],persist=False)
+    reask=calls[1][-1]['content']
+    assert '没读到 [FOUNDATION]、[SCRATCHPAD]' in reask and '收尾标记' in reask

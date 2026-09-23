@@ -354,7 +354,7 @@ async def _run_rewriter_to_session(
 
         missing = [tag for name, tag in _REQUIRED_BLOCKS.items() if name not in parser.seen_blocks]
         if missing:
-            reason = f"上一次输出缺少 {'、'.join(missing)} 块。六个块都必须出现，顺序不变，请重新输出全部块。"
+            reason = f"上一次输出里没读到 {'、'.join(missing)} 块。六个块都必须出现，每块都要有开头和收尾标记，顺序不变，请重新输出全部块。"
         else:
             problems = check_ratchet(session.foundation, foundation_text.strip())
             reason = describe_for_model(problems) if problems else ""
