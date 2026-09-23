@@ -47,23 +47,37 @@ function voiceStyle(confidence?: number): CSSProperties {
   } as CSSProperties
 }
 
-/** 一轮之后地基里落下了哪几条：只给编号，不说话。定下的实，松动的虚，被取代的画个箭头。编号点过去就到那一条。 */
+/** 一轮之后地基里落下了哪几条：只给编号，不说话。定下的实，松动的虚；接替了旧条目的，后面跟一个上标的旧编号，和地基里同一种写法。编号点过去就到那一条。 */
 function Settled({ delta, onLocate }: { delta: GroundworkDelta; onLocate: (n: number) => void }) {
   const at = (n: number, className?: string) => (
     <button key={`${className ?? ''}${n}`} type="button" className={className} title="在地基里看" onClick={() => onLocate(n)}>
       {num(n)}
     </button>
   )
-  const parts: ReactNode[] = [
-    ...delta.confirmed.map((n) => at(n)),
-    ...delta.tentative.map((n) => at(n, 'is-tentative')),
-    ...delta.superseded.map(([from, to]) => (
-      <span key={`s${from}`} className="is-superseded">
-        {to ? at(from) : <s>{num(from)}</s>}
-        {to && <span aria-hidden="true">→</span>}
-        {to && at(to)}
+  // 新编号接替了哪一条旧编号。一条接替了几条的，和地基里一样只标最近的那条。
+  const from = new Map<number, number>()
+  for (const [old, next] of delta.superseded) if (next) from.set(next, old)
+  const withFrom = (n: number, className?: string) => {
+    const old = from.get(n)
+    if (old === undefined) return at(n, className)
+    return (
+      <span key={`l${n}`} className="ct-settled-lineage">
+        {at(n, className)}
+        <button type="button" className="is-from" title="在地基里看" aria-label={`由 ${num(old)} 改来`} onClick={() => onLocate(old)}>
+          {num(old)}
+        </button>
       </span>
-    )),
+    )
+  }
+  const listed = new Set([...delta.confirmed, ...delta.tentative])
+  const replaced = new Set(delta.superseded.map(([old]) => old))
+  // 接替者早就在地基里、这一轮没有新落下的，也列一次；找不到接替者的旧编号淡一些。
+  const extra = [...new Set(delta.superseded.map(([, next]) => next))].filter((n) => n && !listed.has(n) && !replaced.has(n))
+  const parts: ReactNode[] = [
+    ...delta.confirmed.map((n) => withFrom(n)),
+    ...delta.tentative.map((n) => withFrom(n, 'is-tentative')),
+    ...extra.map((n) => withFrom(n)),
+    ...delta.superseded.filter(([, next]) => !next).map(([old]) => at(old, 'is-faded')),
   ]
   // 问题的增减不在这里报：还在松动那一节本身就是当前的问题。
   if (!parts.length) return null
