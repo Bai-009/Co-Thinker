@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Groundwork } from '../domain/types'
 import { arrangeClaims } from '../domain/groundwork'
+import { Lineage } from './Lineage'
 import { paragraphs } from '../domain/prose'
 import { SheetHead, when, type SheetView } from './Sheet'
 
@@ -67,6 +68,20 @@ export function Records(props: Props) {
             <h3>已经定下</h3>
             <ol className="ct-ground-list">
               {settled.map(({ claim, n, origins }) => {
+                // 有来路的一条：平时只见现在的说法，停在编号或句末上标上，原地变回原来的说法。
+                if (origins.length > 0 && claim.status !== 'superseded') {
+                  return (
+                    <Lineage
+                      key={`${claim.id}>${origins[0].claim.id}`}
+                      claim={claim}
+                      n={n}
+                      origin={origins[0]}
+                      highlighted={flash === n || flash === origins[0].n}
+                      updatedAt={groundwork?.updatedAt ?? 0}
+                      onQuote={onQuoteClaim}
+                    />
+                  )
+                }
                 const source = claim.sourceIds.find(sourceExists)
                 return (
                   <li key={claim.id} className={`ct-ground-item${flash === n ? ' is-highlighted' : ''}`} data-claim={n}>
