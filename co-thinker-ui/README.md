@@ -9,7 +9,7 @@ npm run build
 npm test
 ```
 
-当前是**示例模式**：一个跑在浏览器里的模拟传输层，没有连接任何模型。界面上有明确标注。
+默认是**示例模式**：一个跑在浏览器里的模拟传输层，不连模型，界面上有标注。地址后面加 `?live`，或构建时设 `VITE_TRANSPORT=live`，走 `src/transport/httpTransport.ts` 连仓库里的后端；Vite 把 `/api` 代理到根目录 `.env` 里 `PORT` 指定的端口。
 
 ---
 
@@ -81,6 +81,7 @@ src/
   transport/
     types.ts           Transport 契约（示例适配器与将来的真实适配器共用）
     exampleTransport.ts  跑在浏览器里的模拟服务端
+    httpTransport.ts     真实适配器，对接 backend/
     fixtures/          两段写好的讨论
   storage/storage.ts   带命名空间的本机存储，读校验、写失败不谎称已保存
   controller/useSession.ts  领域 / 视图 / 请求三类状态各走各的生命周期

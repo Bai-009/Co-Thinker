@@ -4,6 +4,7 @@ import { arrangeClaims } from '../domain/groundwork'
 import { Lineage } from './Lineage'
 import { paragraphs } from '../domain/prose'
 import { SheetHead, when, type SheetView } from './Sheet'
+import { repository } from '../storage/storage'
 
 interface Props {
   groundwork: Groundwork | null
@@ -14,7 +15,8 @@ interface Props {
   onSwitch: (view: SheetView) => void
   /** 只有窄屏的那层需要自己的关闭；宽屏并排时由顶栏的「地基」收放。 */
   onClose?: () => void
-  onQuoteClaim: (text: string) => void
+  /** 引地基里的一条：n 是清单编号；待定里的一条没有编号，传 null。 */
+  onQuoteClaim: (n: number | null, text: string) => void
   onLocate: (messageId: string) => void
   sourceExists: (messageId: string) => boolean
   /** 计数器变化即定位到第 n 条。 */
@@ -22,27 +24,46 @@ interface Props {
 }
 
 const num = (n: number) => String(n).padStart(2, '0')
+// 条目开合记在本机：散文是地基的正文，条目和变化需要时再展开。
+const ITEMS_KEY = 'records-items'
 
 export function Records(props: Props) {
   const { groundwork, updating, coveredTurns, views, onSwitch, onClose, onQuoteClaim, onLocate, sourceExists, locateRequest } = props
   const scroll = useRef<HTMLDivElement>(null)
   const [flash, setFlash] = useState<number | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>()
+  const [showItems, setShowItems] = useState(
+    () => repository.read<boolean>(ITEMS_KEY, (v): v is boolean => typeof v === 'boolean') ?? false,
+  )
+  const handled = useRef(0)
 
   useEffect(() => () => clearTimeout(timer.current), [])
+  // 从对话里点编号过来，条目先展开，再定位到那一条。
   useEffect(() => {
-    if (!locateRequest) return
+    if (locateRequest) setShowItems(true)
+  }, [locateRequest])
+  useEffect(() => {
+    if (!locateRequest || !showItems || handled.current === locateRequest.k) return
+    handled.current = locateRequest.k
     const el = scroll.current?.querySelector(`[data-claim="${locateRequest.n}"]`)
     el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     setFlash(locateRequest.n)
     clearTimeout(timer.current)
     timer.current = setTimeout(() => setFlash(null), 1600)
-  }, [locateRequest])
+  }, [locateRequest, showItems])
+
+  const toggleItems = () => {
+    const next = !showItems
+    setShowItems(next)
+    repository.write(ITEMS_KEY, next)
+  }
 
   const arranged = arrangeClaims(groundwork?.claims ?? [])
   const settled = arranged.filter(({ claim }) => claim.status !== 'tentative')
   const tentative = arranged.filter(({ claim }) => claim.status === 'tentative')
   const open = groundwork?.open ?? []
+  const pending = tentative.length + open.length
+  const counts = [settled.length ? `共识 ${settled.length}` : '', pending ? `待定 ${pending}` : ''].filter(Boolean).join(' · ')
 
   const meta = updating ? '正在更新' : groundwork ? `截至第 ${coveredTurns} 轮 · ${when(groundwork.updatedAt)}更新` : undefined
 
@@ -62,7 +83,14 @@ export function Records(props: Props) {
           !updating && <p className="ct-empty-note">暂无内容</p>
         )}
 
-        {settled.length > 0 && (
+        {groundwork && counts && (
+          <button type="button" className={`ct-ground-toggle${showItems ? ' is-open' : ''}`} aria-expanded={showItems} onClick={toggleItems}>
+            <span>条目</span>
+            <span className="ct-ground-toggle-count">{counts}</span>
+          </button>
+        )}
+
+        {showItems && settled.length > 0 && (
           <section className="ct-ground-section" aria-label="共识">
             <h3>共识</h3>
             <ol className="ct-ground-list">
@@ -77,7 +105,7 @@ export function Records(props: Props) {
                       origin={origins[0]}
                       highlighted={flash === n || flash === origins[0].n}
                       updatedAt={groundwork?.updatedAt ?? 0}
-                      onQuote={onQuoteClaim}
+                      onQuote={(text) => onQuoteClaim(n, text)}
                     />
                   )
                 }
@@ -117,7 +145,7 @@ export function Records(props: Props) {
                       )}
                     </div>
                     {claim.status !== 'superseded' && (
-                      <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(claim.text)}>
+                      <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(n, claim.text)}>
                         引用
                       </button>
                     )}
@@ -128,7 +156,7 @@ export function Records(props: Props) {
           </section>
         )}
 
-        {(tentative.length > 0 || open.length > 0) && (
+        {showItems && pending > 0 && (
           <section className="ct-ground-section" aria-label="待定">
             <h3>待定</h3>
             <ul className="ct-ground-list is-open">
@@ -138,7 +166,7 @@ export function Records(props: Props) {
                   <div className="ct-ground-body">
                     <p className="ct-ground-text">{claim.text}</p>
                   </div>
-                  <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(claim.text)}>
+                  <button type="button" className="ct-ground-quote" aria-label="引用这条" onClick={() => onQuoteClaim(n, claim.text)}>
                     引用
                   </button>
                 </li>
@@ -149,7 +177,7 @@ export function Records(props: Props) {
                   <div className="ct-ground-body">
                     <p className="ct-ground-text">{q}</p>
                   </div>
-                  <button type="button" className="ct-ground-quote" aria-label="引用这个问题" onClick={() => onQuoteClaim(q)}>
+                  <button type="button" className="ct-ground-quote" aria-label="引用这个问题" onClick={() => onQuoteClaim(null, q)}>
                     引用
                   </button>
                 </li>

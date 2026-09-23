@@ -50,8 +50,8 @@ def _allowed_origins() -> list[str]:
     if raw.strip():
         return [o.strip() for o in raw.split(",") if o.strip()]
     return [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        "http://localhost:5180",
+        "http://127.0.0.1:5180",
     ]
 
 
@@ -77,9 +77,10 @@ async def health():
     return {"status": "ok", "model_configured": bool(key), "model": model}
 
 
-_dist = Path(_BASE).parent / "frontend" / "dist"
+# 打包后的界面（co-thinker-ui，`npm run build`）由后端直接提供；开发时走 Vite 的代理，这里不生效。
+_dist = Path(_BASE).parent / "co-thinker-ui" / "dist"
 if _dist.is_dir():
-    app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="ui")
 
 
 if __name__ == "__main__":

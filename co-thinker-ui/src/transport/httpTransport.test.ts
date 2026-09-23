@@ -1,3 +1,4 @@
+import { makeClaimReference, makeOpenReference } from '../domain/reference'
 import { describe, expect, it } from 'vitest'
 import { resolveReference } from '../domain/reference'
 import { contentForServer, fingerprint, openItems, parseAssistant, parseClaims, readSse, toMessages } from './httpTransport'
@@ -83,6 +84,16 @@ describe('引用走进正文', () => {
     expect(last.version).toBe(fingerprint('先给自己用。'))
     expect(last.reference).toMatchObject({ sourceId: 's1:1', sourceVersion: messages[1].version, quote: '自己还是别人？' })
     expect(resolveReference(last.reference, messages, sid).status).toBe('resolved')
+  })
+
+  it('引地基里的一条：来源写清单编号，刷新后拆回来仍指向那一条', () => {
+    const messages = toMessages(sid, raw, [])
+    const content = contentForServer('这条要改。', makeClaimReference(sid, 2, '给自己用。'), messages)
+    expect(content).toBe('引用材料（地基 第 2 条，引用不代表认同）：\n> 给自己用。\n\n这条要改。')
+    const back = toMessages(sid, [...raw, { role: 'user', content }], [])
+    expect(back[2].text).toBe('这条要改。')
+    expect(back[2].reference).toMatchObject({ sourceId: 'claim:2', quote: '给自己用。' })
+    expect(contentForServer('先定这个。', makeOpenReference(sid, '给谁用'), messages)).toContain('（地基 待定，引用不代表认同）')
   })
 
   it('原句变了就标依据已改变，不去别的消息里找', () => {

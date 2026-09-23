@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import Icon from './Icon'
 import { IconButton } from './Dialog'
 import type { Message, Reference } from '../domain/types'
-import type { ReferenceState } from '../domain/reference'
+import { referenceCaption, type ReferenceState } from '../domain/reference'
 
 interface Props {
   value: string
@@ -17,6 +17,7 @@ interface Props {
   onCancelEdit: () => void
   onDropReference: () => void
   onLocate: (messageId: string) => void
+  onLocateClaim?: (n: number) => void
 }
 
 // 一张纸条：一行输入，右边一个发送。不放例子，不放提示。
@@ -34,6 +35,7 @@ export function Composer(props: Props) {
     onCancelEdit,
     onDropReference,
     onLocate,
+    onLocateClaim,
   } = props
   const area = useRef<HTMLTextAreaElement>(null)
   const mirror = useRef<HTMLDivElement>(null)
@@ -108,13 +110,7 @@ export function Composer(props: Props) {
             <div className="ct-quote">
               <Icon name="reply" size={14} />
               <div>
-                <span>
-                  {referenceState.status === 'changed'
-                    ? '原文已修改'
-                    : referenceState.status === 'missing'
-                      ? '原文已删除'
-                      : '引用'}
-                </span>
+                <span>{referenceCaption(referenceState)}</span>
                 <p>{reference.quote}</p>
               </div>
               {referenceState.status === 'resolved' && (
@@ -123,6 +119,9 @@ export function Composer(props: Props) {
                   label="定位到原文"
                   onClick={() => onLocate(referenceState.message.id)}
                 />
+              )}
+              {referenceState.status === 'claim' && !referenceState.changed && (
+                <IconButton name="source" label="在地基中查看" onClick={() => onLocateClaim?.(referenceState.n)} />
               )}
               <IconButton name="close" label="取消引用" onClick={onDropReference} />
             </div>

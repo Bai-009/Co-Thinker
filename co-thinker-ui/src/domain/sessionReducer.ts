@@ -163,8 +163,21 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
         // 不在这里置「更新中」：后台是否开工由 memory_started 说。
         case 'reply_complete':
           return fromSnapshot(state, event.snapshot)
-        case 'reply_failed':
-          return { ...fromSnapshot(state, event.snapshot), error: event.reason }
+        case 'reply_failed': {
+          // 失败留在出错的那一轮下面，重试也在那里，不顶到对话上方的横条。
+          const base = fromSnapshot(state, event.snapshot)
+          const failed: Message = {
+            id: `failed:${event.requestId}`,
+            sequence: (base.messages.at(-1)?.sequence ?? -1) + 1,
+            version: 1,
+            role: 'assistant',
+            text: '',
+            status: 'failed',
+            error: event.reason,
+            createdAt: Date.now(),
+          }
+          return { ...base, messages: [...base.messages, failed], error: null }
+        }
       }
       return state
     }

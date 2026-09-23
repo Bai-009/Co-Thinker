@@ -2,238 +2,96 @@
 
 > *We can know more than we can tell.* — Polanyi
 
-A thinking-partner LLM workspace where the *subject* of a session is **the thinking activity itself** — not the user, not the AI alone. Each turn produces a voice in the foreground while a self-revising "foundation" of consensus is metabolized in the background. When ready, one click distills the whole conversation into an execution brief shaped for hand-off to coding agents.
+在对话里把想法说清，定下来的沉进地基，需要时一键凝成 Prompt，交给执行。
 
-[中文](#中文-readme) · [English](#english-readme)
+[作品集里有一段 1 分 19 秒的短片](https://github.com/Bai-009/portfolio#co-thinker)，从对话、地基一直演示到生成 Prompt 并复制，连着真实模型录的。
 
----
+## 它是什么
 
-## English README
+你带着一个还没说清的想法进来，一边说一边想。回话是即时消息的节奏：一到三句，说完就把线断开，你马上能接着打字。
 
-### Two timelines, not one
+旁边有一份「地基」。你说过的、认下的，一轮轮沉进去；模型提的建议留在「待定」，你没点头它就不算共识。想清楚了，点一下「生成 Prompt」，整份地基和对话凝成一段能直接交出去的话，交给 Cursor、Claude Code 这类执行 AI。
 
-A turn runs on two independent clocks, deliberately decoupled:
+## 它怎么工作
 
-- **Thinker (foreground, streamed).** Reads full session context, emits a `[VOICE]` block (1-3 sentences typical, with a `[CONF]` self-rating) or `[SILENCE]`. The SSE stream closes the moment the thinker finishes — the user can immediately type the next message.
+**两条时间线，故意分开。** 前台回话流式出来，说完就结束。后台整理慢一拍：另一个模型把这一轮说的东西整理进地基，好了界面再去取。回话不等整理，聊天的节奏才在。
 
-- **Metabolize (background, detached).** Foundation rewriter + judge run together as an `asyncio` task that survives past the request. A per-session async lock serializes concurrent turns' rewrites. The frontend learns about new foundation / clarity via light polling — no one is forced to *watch* the metabolism happen.
+**地基有两份。** 一份是给人读的散文，一份是给程序核对的编号清单。清单只许追加和取代，不许无声地丢、改、重编号；被取代的条目不划掉，挂在接替它的那条下面，读得出为什么改。清单每轮重写完，程序逐条核对，不合格退回模型重写。
 
-This split is why Co-Thinker can keep IM rhythm without losing the metacognitive layer. Folding both into one synchronous stream gates user interaction on metabolic latency; separating them lets each run at its correct cadence.
+**只有双方确认过的才进地基。** 你自己说的目标、偏好、决定，或者模型提出后你明确认下的，才写进清单；模型这一轮刚提的留在待定。真矛盾不悄悄改，下一轮先问你保留哪个。
 
-### The philosophical root
+**引用不代表认同。** 对话里的一句、地基里的一条，都能拉回来继续说。引文标着来源进正文，四个读对话的模型都看得到；原文改了，引用会说「依据已改变」。
 
-[backend/prompts/principles.md](backend/prompts/principles.md) is the load-bearing document for every prompt, field name, and UI string. The core position:
+**显示给人看的字按中文常态写。** 顿号只用在并列的词之间，不用破折号，不用系统里的词。地基里写错了，程序查得出来的几条会退回模型改。
 
-> 主体是这次思考活动本身。"我们" 不是社交礼貌，是物理事实——这个思考活动只能由两边的能力共同完成。
+思路的根在 [backend/prompts/principles.md](backend/prompts/principles.md)：每次会话的主体是这次思考活动本身，不是用户，也不是 AI。改提示词前先读它。
 
-Three taboos every prompt and UI string is checked against:
+## 自己跑起来
 
-- **a. Objectifying the human side** — "用户希望…", "用户的认知是 novice"
-- **b. AI self-centering** — "我建议你…", "AI 的工作是…"
-- **c. Oppositional framing** — "你 vs 我", "我替你判断"
-
-Read it before changing prompts.
-
-### Standout features
-
-| Feature | Lives in |
-|---|---|
-| **Self-revising foundation** (numbered list + prose narrative, written together every turn) | [backend/prompts/foundation_rewriter.md](backend/prompts/foundation_rewriter.md) — the "double-confirmation hard rule" keeps unconfirmed thinker proposals out of the foundation; they go to scratchpad's `proposed_directions` instead. |
-| **Single-thinker turn** | [backend/prompts/thinker.md](backend/prompts/thinker.md) — IM rhythm enforced (1-3 sentences default), three legal forms (确认 / 关键岔路问题 / 微展开), strict prohibitions on premature solving and jargon-dumping. |
-| **Streaming marker parser** | [backend/sse.py](backend/sse.py) — chunk-aware state machine that handles markers split across SSE chunks; tested in [backend/tests/test_sse.py](backend/tests/test_sse.py). |
-| **2D felt-sense color space** | [frontend/src/lib/sense.js](frontend/src/lib/sense.js) — bilinear interpolation across 4 muted parchment corners driven by the model's self-reported certainty × resonance, blended via CSS `@property` transitions. |
-| **Judge AI metacognition** | [backend/prompts/judge.md](backend/prompts/judge.md) — separate metacognitive pass producing clarity / drift / seed; drives grain density, foundation drift annotation, and composer ghost suggestion. |
-| **Execution-brief distillation** | [backend/prompts/brief.md](backend/prompts/brief.md) — compresses the whole conversation into structured markdown ready to hand to Cursor / Lovable / Kimi. |
-| **Per-session SQLite persistence** | [backend/store.py](backend/store.py) — `SqliteSessionStore` keyed by `X-Session-Id`; in-memory variant available for tests. |
-
-### Architecture
-
-```
-  Browser (React 18 + Vite)
-       │  fetch + ReadableStream
-       │  X-Session-Id header (per-tab, localStorage)
-       ▼
-  ┌──────────────────────────────────────────────────────────┐
-  │  FastAPI                                                 │
-  │                                                          │
-  │  POST /api/chat/workshop                                 │
-  │       streams voice_start / voice_delta / voice_conf /   │
-  │               voice_end / done                           │
-  │       on done → asyncio.create_task(_metabolize_turn) ─┐ │
-  │                                                        │ │
-  │  (detached, per-session asyncio lock serializes turns) │ │
-  │  metabolize: rewriter LLM → judge LLM → store.save  ◄──┘ │
-  │                                                          │
-  │  GET  /api/chat/foundation, /clarity, /sense  ← poll     │
-  │  POST /api/chat/brief    streams the markdown brief      │
-  │  GET  /api/chat/sessions, history, ...                   │
-  └─────┬───────────────────────────────────────┬────────────┘
-        │ session reads/writes                  │ LLM stream calls
-        ▼                                       ▼
-  SQLite (sessions + messages)         DeepSeek chat completions
-```
-
-### Tech stack
-
-- **Backend**: Python 3.12 · FastAPI · httpx (streaming) · SQLite · pytest
-- **Frontend**: React 18 · Vite · Vitest + Testing Library · plain `fetch` + `ReadableStream` (POST bodies need this; EventSource is GET-only)
-- **LLM**: DeepSeek `chat-completions` (any OpenAI-compatible endpoint works)
-- **Deploy**: Docker + Compose; nginx serves the SPA and proxies `/api`
-
-### Local development
-
-Prereqs: Python 3.10+, Node 18+.
+需要 Python 3.10 以上、Node 18 以上，和一把 DeepSeek 的密钥。
 
 ```bash
-# 1. Configure
-cp .env.example .env
-# Edit .env to set DEEPSEEK_API_KEY. Uncomment COTHINKER_DB for persistence
-# (recommended for local dev — without it, sessions wipe on restart).
-
-# 2. Backend
-cd backend
-pip install -r requirements.txt
-python main.py            # http://127.0.0.1:8000
-
-# 3. Frontend (new terminal)
-cd frontend
-npm install
-npm run dev               # http://127.0.0.1:5173
+cp .env.example .env          # 填 DEEPSEEK_API_KEY；端口用 PORT，前后端都读它
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python3 main.py
+cd co-thinker-ui && npm install && npm run dev      # 打开 http://127.0.0.1:5180/?live
 ```
 
-### Docker
+不带 `?live` 打开的是示例模式：浏览器里跑一套写好的对话，不连模型，用来看界面。
+
+用 Docker：
 
 ```bash
 cp .env.example .env
-docker compose up --build
-# open http://localhost:8080
+docker compose up --build     # 打开 http://localhost:8080
 ```
 
-The backend persists its SQLite DB to a named volume (`cothinker-data`).
+## 配置
 
-### Tests
-
-```bash
-cd backend && python -m pytest    # 50 passing
-cd frontend && npm test            # 27 passing
-```
-
-### Project layout
-
-```
-backend/
-  main.py              FastAPI entry, CORS, lifespan
-  store.py             Session + InMemorySessionStore + SqliteSessionStore
-                       + session_async_lock registry
-  sse.py               StreamParser, marker constants, sse_event helper
-  llm.py               DeepSeek client (sync + streaming)
-  deps.py              X-Session-Id resolver
-  models.py            Pydantic request models
-  prompts/
-    principles.md           The philosophical root — read first
-    thinker.md              System prompt for the foreground thinker call
-    foundation_rewriter.md  System prompt for the background rewriter
-    judge.md                System prompt for the metacognitive judge
-    brief.md                System prompt for execution-brief distillation
-  routers/
-    workshop.py             Thinker SSE; spawns _metabolize_turn background task
-    judge.py                Standalone judge endpoint (fallback) + run_judge_inline helper
-    brief.py                Execution-brief streaming
-    session.py              history / foundation / sense / clarity / sessions list
-  tests/                    pytest — sse parsing · store roundtrip · brief / judge helpers
-
-frontend/
-  src/
-    App.jsx                 Slim orchestrator
-    components/             Topbar · Composer · MessageView · Sidebar · BriefModal · FoundationModal
-    hooks/
-      useWorkshop.js        Drives the thinker SSE stream; unlocks UI on done
-      useFoundationPoll.js  Polls /foundation /clarity /sense until metabolize settles
-      useJudge.js           Holds clarity / drift / seed state (fed by the poll hook)
-      useBrief.js           Drives the brief modal
-      useConversations.js   Sidebar list + current id
-    lib/                    sse · session · sense · api · messages (+ unit tests)
-    index.css               Visual system — read the rules at the top before editing
-docker-compose.yml          Backend + nginx-served frontend
-```
-
-### Configuration
-
-| Env var | Default | Notes |
+| 变量 | 默认 | 说明 |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | *(required)* | DeepSeek API key |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Any OpenAI-compatible endpoint |
-| `DEEPSEEK_MODEL` | `deepseek-flash` | |
-| `DEEPSEEK_REASONER_MODEL` | `deepseek-v4-pro` | Judge only |
-| `COTHINKER_<ROLE>_THINKING` | `1` | DeepSeek thinking mode per role (THINKER / REWRITER / BRIEF / JUDGE); while on, `temperature` is ignored |
-| `COTHINKER_<ROLE>_EFFORT` | `high` | `low` / `high` / `max`, thinking only |
-| `COTHINKER_<ROLE>_TEMPERATURE` | model default `1.0` | Non-thinking only |
-| `COTHINKER_THINKER_RETRIES` | `1` | Silent retry when the thinker fails before any output |
-| `COTHINKER_REWRITER_RETRIES` | `2` | Re-ask the rewriter with the ratchet violations, then keep the old 地基 |
-| `COTHINKER_CONTEXT_LAYOUT` | `tail` | `tail`: static prompt → history → state before the newest message; `head`: state inside the system prompt |
-| `COTHINKER_JUDGE` | `0` | Run the judge after each memory update |
-| `COTHINKER_DB` | *(unset → in-memory)* | Path to SQLite DB; `:memory:` for ephemeral; `../cothinker.db` recommended for local dev (lands at project root) |
-| `ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated CORS allowlist |
-| `PORT` | `8000` | |
+| `DEEPSEEK_API_KEY` | 必填 | DeepSeek 密钥 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 任何 OpenAI 兼容的地址都行 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 回话、整理、Prompt 三个角色用 |
+| `DEEPSEEK_REASONER_MODEL` | `deepseek-v4-pro` | 只有判官用 |
+| `COTHINKER_<ROLE>_THINKING` | `1` | 按角色开关思考模式，ROLE 是 THINKER / REWRITER / BRIEF / JUDGE；开着时 `temperature` 不生效 |
+| `COTHINKER_<ROLE>_EFFORT` | 回话 `low`，其余 `high` | 思考档位 `low` / `high` / `max`。回话开 `high` 第一个字平均要等 7.8 秒，`low` 档 3 到 5 秒 |
+| `COTHINKER_<ROLE>_TEMPERATURE` | 模型默认 `1.0` | 只在思考模式关着时生效 |
+| `COTHINKER_THINKER_RETRIES` | `1` | 回话还没出字就失败时，静默重来一次 |
+| `COTHINKER_REWRITER_RETRIES` | `2` | 清单没过核对、写法不合要求时，退回重写几次 |
+| `COTHINKER_CONTEXT_LAYOUT` | `tail` | `tail`：固定指令在前，当前地基贴在最新一句前面；`head`：地基放在系统提示里 |
+| `COTHINKER_JUDGE` | `0` | 每次地基更新后再跑一遍判官 |
+| `COTHINKER_DB` | 不设则存内存 | SQLite 路径。本地开发建议 `../cothinker.db`，落在仓库根目录，已忽略不入库 |
+| `ALLOWED_ORIGINS` | `http://localhost:5180,http://127.0.0.1:5180` | 跨域白名单。开发和 Docker 都经代理同源访问，一般用不到 |
+| `PORT` | `8000` | 后端端口，前端代理读同一个值 |
 | `LOG_LEVEL` | `INFO` | |
 
----
+## 仓库里有什么
 
-## 中文 README
+```
+backend/                 FastAPI 后端
+  routers/workshop.py      回话的流式接口；回话落定后把整理排进后台
+  routers/brief.py         生成 Prompt
+  routers/judge.py         判官（默认关）
+  foundation.py            清单的核对规则：只许追加和取代
+  writing.py               写法的机械检查
+  sse.py                   流式标记的解析器
+  llm.py                   DeepSeek 调用，按角色记 token 和耗时
+  store.py                 会话与地基的存储（SQLite 或内存）
+  prompts/                 四个角色的提示词，principles.md 是根
+co-thinker-ui/           界面（React + Vite），说明见 co-thinker-ui/README.md
+docs/、plans/            早期的设计记录
+```
 
-### 这是什么
+## 测试
 
-Co-Thinker 是一个 LLM **思考伙伴**工作台。每次会话的主体是**这次思考活动本身**——不是用户、不是 AI。每一轮产生一段浮现 voice（1-3 句），然后在回看中沉淀出一段**会自我重写的"地基"**。准备好之后，一键把整场对话凝结成**执行简报**递给 Cursor / Lovable / Kimi 这类执行 agent。
+```bash
+cd backend && .venv/bin/python3 -m pytest      # 94 个用例
+cd co-thinker-ui && npm test                   # 73 个用例
+```
 
-### 两条独立时序，不是一条
+## English
 
-一轮跑在两个相互独立的时间模型上：
-
-- **Thinker（前台，流式）**：读完整 context，输出一个 `[VOICE]` 块（1-3 句、带 `[CONF]` 自评）或 `[SILENCE]`。**SSE 流在 thinker 一结束就关闭——用户可以立刻输入下一句**。
-
-- **Metabolize（后台，分离）**：地基重写 + judge 在同一个 `asyncio` 任务里按序跑，**不跟请求一起死**。每个 session 一把异步锁串行化并发轮次的写入。前端轻量 polling 拿结果——没人被强迫"看着"消化。
-
-这套拆分是 Co-Thinker 能保持 IM 节奏又不丢元认知层的关键。强行同步会让用户交互门控在元认知 LLM 延迟上；拆开让两者各自按正确节奏跑。
-
-### 主体性的根
-
-[backend/prompts/principles.md](backend/prompts/principles.md) 是所有 prompt、字段名、UI 文案的**根**。核心位置：
-
-> 主体是这次思考活动本身。"我们"不是社交礼貌，是物理事实——这个思考活动只能由两边的能力共同完成。
-
-三类违反，任一出现都必须改：
-
-- **a. 对象化人这一边**——"用户希望…"、"用户的认知是 novice"
-- **b. AI 自我中心化**——"我建议你…"、"AI 的工作是…"
-- **c. 对立态**——"你 vs 我"、"我替你判断"
-
-改 prompt 前先读这份。
-
-### 项目亮点
-
-- **会自我重写的地基**（散文 narrative + 编号清单 list 两种形态同步写）——双向确认硬规则把 thinker 单方提案挡在地基外，进 scratchpad 的 `proposed_directions`
-- **单 thinker、IM 节奏**——默认 1-3 句，三种合法形态：确认 / 关键岔路问题 / 微展开
-- **流式 marker 协议 + chunk-aware 解析器**——处理跨 chunk 切分的 marker
-- **2D felt-sense 色彩空间**——bilinear 插值四角浅冷灰 / 奶白 / 淡薰衣草 / 暖沙，CSS `@property` 平滑过渡，hue 范围 ~6°
-- **Judge AI 元认知**——独立 LLM pass 输出 clarity / drift / seed，驱动颗粒密度、地基悬浮注释、composer 幽灵提示
-- **执行简报蒸馏**——把整次思考活动凝结成给执行 agent 的 markdown 心智简报
-- **per-session SQLite 持久化**——`X-Session-Id` 头隔离会话
-
-### 视觉系统
-
-[frontend/src/index.css](frontend/src/index.css) 顶部声明了三条硬规则（"hard rule, not guideline"）：
-
-1. **每个视觉通道一个信号，不交叉**——色温 ← certainty × resonance；质感 ← clarity；per-voice 存在感 ← confidence。**per-voice 信号绝对不用 hue**
-2. **色域克制到 ~6° hue 范围**——5-阶 ink palette + 单一 accent 色相家族；整页读起来像同一张纸略变温/略变潮，绝不切换调色板
-3. **Motion budget 分四档故意不同步**——12-20s 大气漂移 / 4-6s 状态切换 / 3-4s breathing / ≤ 600ms 交互；不允许两个长动画同周期
-
-视觉比喻是**温暖的旧期刊纸**——Sidebar 是"装订线略浸湿"的目录页，Composer 是"被按压过的纸卡片"，Voice 是左侧 1px 墨水笔触，topbar 按钮是"editorial marginalia"（Lora italic, 无 chrome）。
-
-### 架构、Tech stack、本地开发、Docker、测试
-
-参见上面英文章节，命令一致。
-
----
+Co-Thinker is a thinking-partner workspace. You talk an idea through in IM rhythm; what the two sides settle on sinks into a self-revising foundation (a prose account for reading, a numbered list for mechanical checks), while the model's own proposals wait as pending. One click distills the whole conversation into a first-person brief for a coding agent. Backend: FastAPI + DeepSeek. Frontend: React + Vite. `backend/prompts/principles.md` states the stance every prompt is written from.
 
 ## License
 

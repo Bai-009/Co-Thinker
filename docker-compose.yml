@@ -4,7 +4,7 @@ services:
     environment:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
       COTHINKER_DB: /data/cothinker.db
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
@@ -17,8 +17,8 @@ services:
       timeout: 5s
       retries: 3
 
-  frontend:
-    build: ./frontend
+  ui:
+    build: ./co-thinker-ui
     ports:
       - "8080:80"
     depends_on:

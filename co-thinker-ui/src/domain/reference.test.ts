@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalize, parse } from './markdown'
-import { makeReference, resolveReference } from './reference'
+import { makeClaimReference, makeOpenReference, makeReference, resolveReference } from './reference'
 import type { Message } from './types'
 
 const message = (id: string, text: string, version = 1): Message => ({
@@ -79,5 +79,27 @@ describe('引用的所指', () => {
     const reference = makeReference('s1', messages[2])
     expect(resolveReference(reference, messages, 's2').status).toBe('missing')
     expect(resolveReference(reference, messages.slice(0, 2), 's1').status).toBe('missing')
+  })
+})
+
+describe('引地基里的一条', () => {
+  const claims = [
+    { id: 'c0', text: '要写的是团队评审清单，不是打分表。', status: 'confirmed' as const, sourceIds: [] },
+    { id: 'c1', text: '可以打勾的项会被数。', status: 'confirmed' as const, sourceIds: [] },
+  ]
+  const groundwork = { claims, open: ['清单一共放几条，还没定。'] }
+
+  it('字一样就是同一条；改写或被取代了就说已改写', () => {
+    const ref = makeClaimReference('s1', 2, claims[1].text)
+    expect(resolveReference(ref, [], 's1', groundwork)).toEqual({ status: 'claim', n: 2, changed: false })
+    const rewritten = { ...groundwork, claims: [claims[0], { ...claims[1], text: '改过的话。' }] }
+    expect(resolveReference(ref, [], 's1', rewritten)).toMatchObject({ status: 'claim', changed: true })
+    expect(resolveReference(ref, [], 's1', null)).toMatchObject({ status: 'claim', changed: true })
+  })
+
+  it('待定的一条按原文找，不在待定里了就说已改', () => {
+    const ref = makeOpenReference('s1', groundwork.open[0])
+    expect(resolveReference(ref, [], 's1', groundwork)).toEqual({ status: 'open', changed: false })
+    expect(resolveReference(ref, [], 's1', { claims, open: [] })).toEqual({ status: 'open', changed: true })
   })
 })

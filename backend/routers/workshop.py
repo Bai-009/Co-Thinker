@@ -28,6 +28,7 @@ import asyncio
 from copy import deepcopy
 import os
 import logging
+import re
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
@@ -35,6 +36,7 @@ from fastapi.responses import StreamingResponse
 
 from deps import SESSION_HEADER, get_session
 from foundation import check_ratchet, describe_for_model
+from writing import check_writing, describe_writing_for_model
 from llm import call_options, chat_completion_stream
 from models import ChatRequest
 from runtime import runtime_for, spawn, memory_status
@@ -58,8 +60,27 @@ log = logging.getLogger("cothinker.workshop")
 
 # --- prompt builders ----------------------------------------------------
 
+_QUESTION_RE = re.compile(r"[？?]")
+_VOICE_MARK_RE = re.compile(r"\[CONF\][^\[]*\[/CONF\]|\[/?[A-Z_]+\]")
+
+
+def _last_turn_note(session: Session) -> str:
+    """上一两轮的浮现是不是在问。由程序判定，不靠模型自觉。
+
+    录下来的 58 段浮现里 32 段是「X 还是 Y」的岔路，连着问会把推进全推给对方。
+    这一行附在状态里，thinker.md 的「关键岔路」一节说了读到它该怎么做。
+    """
+    voices = [m.get("content") or "" for m in session.messages if m.get("role") == "assistant"]
+    asked = [bool(_QUESTION_RE.search(_VOICE_MARK_RE.sub("", v))) for v in voices[-2:]]
+    if not asked or not asked[-1]:
+        return ""
+    if len(asked) == 2 and asked[0]:
+        return "上两轮浮现都在问。这一轮不再问，先给一步判断，除非对方这句真的读不懂。"
+    return "上一轮浮现在问，对方这句是答复。接着答复往前推一步，不紧接着再开一个岔路。"
+
+
 def _state_sections(session: Session) -> list[str]:
-    """当前状态的四段。顺序固定、不带时间戳，序列化是确定的，缓存才不会白白作废。"""
+    """当前状态的几段。顺序固定、不带时间戳，序列化是确定的，缓存才不会白白作废。"""
     parts: list[str] = []
     if session.foundation_narrative.strip():
         parts.append("# 当前地基（散文自述）\n\n" + session.foundation_narrative.strip())
@@ -69,6 +90,9 @@ def _state_sections(session: Session) -> list[str]:
         parts.append("# 当前 scratchpad（这次思考活动的内部状态）\n\n" + session.scratchpad.strip())
     if session.plan.strip():
         parts.append("# 当前 plan（阶段化工作流，`- [x]` 已完成，`- [ ]` 未完成）\n\n" + session.plan.strip())
+    note = _last_turn_note(session)
+    if note:
+        parts.append("# 上一轮的形态\n\n" + note)
     return parts
 
 
@@ -358,6 +382,16 @@ async def _run_rewriter_to_session(
         else:
             problems = check_ratchet(session.foundation, foundation_text.strip())
             reason = describe_for_model(problems) if problems else ""
+        if not reason:
+            # 写法是软要求：查得出来的几条（顿号接连词、破折号、反引号）退回去改，
+            # 最后一次还改不动就收下，不让一个标点拖住整轮。
+            wording = check_writing(narrative_text, session.foundation, foundation_text.strip(), parser.scratchpad_buf)
+            if wording and attempt < REWRITER_RETRIES:
+                log.info("rewriter wording sent back (attempt %d): %s", attempt + 1, " | ".join(wording)[:300])
+                feedback = [{"role": "assistant", "content": raw}, {"role": "user", "content": describe_writing_for_model(wording)}]
+                continue
+            if wording:
+                log.warning("rewriter wording still off after %d attempts, accepted anyway: %s", attempt + 1, " | ".join(wording)[:300])
         if reason:
             # 把被拒的原文留在日志里（截断），不然没法知道模型到底写了什么。
             log.warning(

@@ -7,7 +7,7 @@
   推理 token 和耗时。没有这些数字，缓存和 thinking 是否按预期工作无从得知。
 - 把角色的旋钮收在环境变量里（见 .env.example）：
     COTHINKER_<ROLE>_THINKING      1/0，默认 1
-    COTHINKER_<ROLE>_EFFORT        low|high|max，只在 thinking 开着时有效
+    COTHINKER_<ROLE>_EFFORT        low|high|max，只在 thinking 开着时有效；前台默认 low，其余照模型默认（high）
     COTHINKER_<ROLE>_TEMPERATURE   小数，只在 thinking 关着时有效
   ROLE 取 THINKER / REWRITER / BRIEF / JUDGE。
 """
@@ -48,11 +48,16 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+# 前台的思考档位默认 low：high 档第一个字平均要等 7.8 秒，十次里一次超过 16 秒；
+# low 档 3 到 5 秒，回话看不出变浅（2026-09-23 实测）。后台不赶时间，照模型默认的 high。
+_DEFAULT_EFFORT = {"thinker": "low"}
+
+
 def call_options(role: str) -> dict:
     """某个角色这次调用的旋钮。默认都 thinking，某个角色想关就设 COTHINKER_<ROLE>_THINKING=0。"""
     key = role.upper()
     opts: dict = {"role": role, "thinking": _env_flag(f"COTHINKER_{key}_THINKING", True)}
-    effort = os.getenv(f"COTHINKER_{key}_EFFORT", "").strip().lower()
+    effort = os.getenv(f"COTHINKER_{key}_EFFORT", "").strip().lower() or _DEFAULT_EFFORT.get(role.lower(), "")
     if effort in ("low", "high", "max"):
         opts["effort"] = effort
     temperature = os.getenv(f"COTHINKER_{key}_TEMPERATURE", "").strip()
