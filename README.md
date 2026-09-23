@@ -165,7 +165,7 @@ docker-compose.yml          Backend + nginx-served frontend
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Any OpenAI-compatible endpoint |
 | `DEEPSEEK_MODEL` | `deepseek-flash` | |
 | `DEEPSEEK_REASONER_MODEL` | `deepseek-v4-pro` | Judge only |
-| `COTHINKER_<ROLE>_THINKING` | thinker `0`, others `1` | DeepSeek thinking mode per role (THINKER / REWRITER / BRIEF / JUDGE); while on, `temperature` is ignored |
+| `COTHINKER_<ROLE>_THINKING` | `1` | DeepSeek thinking mode per role (THINKER / REWRITER / BRIEF / JUDGE); while on, `temperature` is ignored |
 | `COTHINKER_<ROLE>_EFFORT` | `high` | `low` / `high` / `max`, thinking only |
 | `COTHINKER_<ROLE>_TEMPERATURE` | model default `1.0` | Non-thinking only |
 | `COTHINKER_THINKER_RETRIES` | `1` | Silent retry when the thinker fails before any output |

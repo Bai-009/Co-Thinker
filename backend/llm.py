@@ -2,11 +2,11 @@
 
 这里是 harness 的底座，做三件事：
 - 按角色显式钉住 thinking 模式。DeepSeek 现在默认开 thinking（档位 high），
-  开着时 temperature 不生效；thinker 是心跳，默认关；其他角色默认开。
+  开着时 temperature 不生效。四个角色默认都开：前台试过关掉，快是快了，不像在想。
 - 让流式响应在最后一块带回 usage，按角色记录输入、缓存命中、未命中、输出、
   推理 token 和耗时。没有这些数字，缓存和 thinking 是否按预期工作无从得知。
 - 把角色的旋钮收在环境变量里（见 .env.example）：
-    COTHINKER_<ROLE>_THINKING      1/0，thinker 默认 0，其余默认 1
+    COTHINKER_<ROLE>_THINKING      1/0，默认 1
     COTHINKER_<ROLE>_EFFORT        low|high|max，只在 thinking 开着时有效
     COTHINKER_<ROLE>_TEMPERATURE   小数，只在 thinking 关着时有效
   ROLE 取 THINKER / REWRITER / BRIEF / JUDGE。
@@ -49,9 +49,9 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 def call_options(role: str) -> dict:
-    """某个角色这次调用的旋钮。thinker 默认不 thinking，其余默认 thinking。"""
+    """某个角色这次调用的旋钮。默认都 thinking，某个角色想关就设 COTHINKER_<ROLE>_THINKING=0。"""
     key = role.upper()
-    opts: dict = {"role": role, "thinking": _env_flag(f"COTHINKER_{key}_THINKING", role != "thinker")}
+    opts: dict = {"role": role, "thinking": _env_flag(f"COTHINKER_{key}_THINKING", True)}
     effort = os.getenv(f"COTHINKER_{key}_EFFORT", "").strip().lower()
     if effort in ("low", "high", "max"):
         opts["effort"] = effort
